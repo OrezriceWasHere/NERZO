@@ -1,0 +1,18 @@
+{
+  "size": 0,
+  "aggs": {
+    "x_terms": {
+      "terms": {
+        "field": "tagged_entities.type.keyword",
+        "size": 10000
+      },
+      "aggs": {
+        "top_docs": {
+          "top_hits": {
+            "size": 30
+          }
+        }
+      }
+    }
+  }
+}

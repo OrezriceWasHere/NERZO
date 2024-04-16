@@ -1,3 +1,5 @@
 tqdm
 elasticsearch[async]
 clearml
+openai
+scikit-learn

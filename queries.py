@@ -36,19 +36,19 @@ def query_count_apperance_of_entities(title: str) -> dict:
     }
 
 
-def query_aggerage_by_type() -> dict:
+def query_aggergate_by_type(count_entity_types, count_per_type) -> dict:
     return {
         "size": 0,
         "aggs": {
             "x_terms": {
                 "terms": {
                     "field": "tagged_entities.type.keyword",
-                    "size": 10
+                    "size": count_entity_types
                 },
                 "aggs": {
                     "top_docs": {
                         "top_hits": {
-                            "size": 20
+                            "size": count_per_type
                         }
                     }
                 }
@@ -63,6 +63,6 @@ def query_get_by_entity_type(entity_type: str) -> dict:
                 "tagged_entities.type.keyword": entity_type
             }
         },
-        "size": 1000,
+        "size": 20,
         "_source": ["tagged_entities", "content"]
     }

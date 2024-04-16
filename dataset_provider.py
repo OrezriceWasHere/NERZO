@@ -21,7 +21,7 @@ new_index = "no_redundant_object"
 
 
 def search(query=elastic_query, index=both_indices, **kwargs):
-    response = es.search(index=index, body=query)
+    response = es.search(index=index, body=query, **kwargs)
     return response.body
 
 
@@ -48,4 +48,11 @@ def get_by_entity_type(entity_type: str):
     query = queries.query_get_by_entity_type(entity_type)
     index = "training_data_object,testing_data_object"
     response = search(index=index, query=query, filter_path=["hits.hits._source"])
+    return response
+
+def get_top_results_for_entities(count_entity_types=500,
+                                 count_per_type=5,
+                                 index="training_data_object,testing_data_object"):
+    query = queries.query_aggergate_by_type(count_entity_types, count_per_type)
+    response = search(index=index, query=query)
     return response

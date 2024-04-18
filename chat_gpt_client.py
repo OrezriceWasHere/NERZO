@@ -7,6 +7,7 @@ client = OpenAI(
     api_key=os.environ.get("OPENAI_API_KEY"),
 )
 
+
 def send_message(message: str | list[str],
                  role="system",
                  model="gpt-3.5-turbo") -> ChatCompletion | Stream[ChatCompletionChunk]:
@@ -23,7 +24,6 @@ def send_message(message: str | list[str],
             }
             for single_message in message
         ]
-
 
     return client.chat.completions.create(
         model=model,

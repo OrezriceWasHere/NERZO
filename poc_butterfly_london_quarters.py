@@ -17,9 +17,9 @@ async def handle_type(entity_type: str):
         document = dataset_document["_source"]
         entities = entity_classifier.pick_entities_of_type(document, entity_type)
         chosen_entity = random.choice(entities)
-        prompt = entity_classifier.build_prompt(entity_type=entity_type,
-                                                entity_text=chosen_entity["entity_in_text"],
-                                                sentence=document["content"])
+        prompt = entity_classifier.build_classification_prompt(entity_type=entity_type,
+                                                               entity_text=chosen_entity["entity_in_text"],
+                                                               sentence=document["content"])
         print(prompt)
         chat_gpt_response = chat_gpt_client.send_message(prompt)
         parsed_response = chat_gpt_client.parse_answer_from_response(chat_gpt_response)

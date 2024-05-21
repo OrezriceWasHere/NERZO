@@ -56,6 +56,7 @@ def query_aggergate_by_type(count_entity_types, count_per_type) -> dict:
         }
     }
 
+
 def query_get_by_entity_type(entity_type: str) -> dict:
     return {
         "query": {
@@ -65,4 +66,29 @@ def query_get_by_entity_type(entity_type: str) -> dict:
         },
         "size": 20,
         "_source": ["tagged_entities", "content"]
+    }
+
+
+def query_get_by_fine_grained_fewnerd(fine_grained_type: str) -> dict:
+    return {
+        "query": {
+            "bool": {
+                "filter": [
+                    {
+                        "script": {
+                        "script": {
+                            "source": "doc['tagging.fine_type'].length > 1"
+                        }
+                    }
+                    },
+                    {
+                        "term": {
+                            "tagging.fine_type": fine_grained_type
+                        }
+                    }
+                ]
+            }
+
+        },
+        "size": 10
     }

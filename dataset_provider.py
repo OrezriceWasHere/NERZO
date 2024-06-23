@@ -56,6 +56,12 @@ def get_by_fine_grained_type_fewnerd(fine_grained_type: str):
     response = search(index=index, query=query, filter_path=["hits.hits._source"])
     return response
 
+def get_by_coarse_grained_type_fewnerd(fine_grained_type: str):
+    query = queries.query_get_by_coarse_grained_fewnerd(fine_grained_type)
+    index = "fewnerd_*"
+    response = search(index=index, query=query, filter_path=["hits.hits._source"])
+    return response
+
 def get_top_results_for_entities(count_entity_types=500,
                                  count_per_type=5,
                                  index="training_data_object,testing_data_object"):

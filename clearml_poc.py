@@ -1,11 +1,12 @@
 from clearml import Task
 
 ALLOW_CLEARML = True
-RUNNING_REMOTE = False
+RUNNING_REMOTE = True
 
 if ALLOW_CLEARML:
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
-                               task_name="fewnerd dataset",
+                               task_name="fewnerd classification coarse types - gpt 4",
+
                                task_type=Task.TaskTypes.optimizer,
                                reuse_last_task_id=False)
     if RUNNING_REMOTE:

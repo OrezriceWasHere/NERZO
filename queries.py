@@ -76,10 +76,10 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str) -> dict:
                 "filter": [
                     {
                         "script": {
-                        "script": {
-                            "source": "doc['tagging.fine_type'].length > 1"
+                            "script": {
+                                "source": "doc['tagging.fine_type'].length > 1"
+                            }
                         }
-                    }
                     },
                     {
                         "term": {
@@ -90,5 +90,30 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str) -> dict:
             }
 
         },
-        "size": 10
+        "size": 100
+    }
+
+
+def query_get_by_coarse_grained_fewnerd(coarse_grained_type: str) -> dict:
+    return {
+        "query": {
+            "bool": {
+                "filter": [
+                    {
+                        "script": {
+                            "script": {
+                                "source": "doc['tagging.coarse_type'].length > 1"
+                            }
+                        }
+                    },
+                    {
+                        "term": {
+                            "tagging.coarse_type": coarse_grained_type
+                        }
+                    }
+                ]
+            }
+
+        },
+        "size": 100
     }

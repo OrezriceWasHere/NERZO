@@ -10,7 +10,7 @@ client = OpenAI(
 
 def send_message(message: str | list[str],
                  role="system",
-                 model="gpt-3.5-turbo") -> ChatCompletion | Stream[ChatCompletionChunk]:
+                 model="gpt-4-turbo") -> ChatCompletion | Stream[ChatCompletionChunk]:
     if isinstance(message, str):
         messages = [{
             "role": role,

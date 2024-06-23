@@ -15,5 +15,8 @@ def pick_entities_of_type(document, entity_type: str) -> list[dict]:
 def pick_entities_of_finetype_fewnerd(document, fine_type: str) -> list[dict]:
     return [entity for entity in document if entity["fine_type"] == fine_type]
 
+def pick_entities_of_coarsetype_fewnerd(document, fine_type: str) -> list[dict]:
+    return [entity for entity in document if entity["coarse_type"] == fine_type]
+
 
 

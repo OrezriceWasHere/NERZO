@@ -4,3 +4,9 @@ clearml
 openai
 scikit-learn
 pandas
+transformers
+huggingface_hub
+bitsandbytes
+accelerate
+protobuf==3.20.1
+matplotlib

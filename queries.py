@@ -72,25 +72,34 @@ def query_get_by_entity_type(entity_type: str) -> dict:
 def query_get_by_fine_grained_fewnerd(fine_grained_type: str) -> dict:
     return {
         "query": {
-            "bool": {
-                "filter": [
-                    {
-                        "script": {
-                            "script": {
-                                "source": "doc['tagging.fine_type'].length > 1"
+            "function_score": {
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {
+                                "script": {
+                                    "script": {
+                                        "source": "doc['tagging.fine_type'].length > 1"
+                                    }
+                                }
+                            },
+                            {
+                                "term": {
+                                    "tagging.fine_type": fine_grained_type
+                                }
                             }
-                        }
-                    },
-                    {
-                        "term": {
-                            "tagging.fine_type": fine_grained_type
-                        }
+                        ]
                     }
-                ]
+                },
+                "boost": "5",
+                "random_score": {
+                    "seed": 12345678910,
+                    "field": '_seq_no'
+                },
+                "boost_mode": 'sum'
             }
-
         },
-        "size": 100
+        "size": 50
     }
 
 

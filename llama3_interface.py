@@ -53,12 +53,11 @@ class LLama3Interface:
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
         self.model = (AutoModelForCausalLM.from_pretrained(LLAMA_3_ID,
-                                                      device_map="auto",
-                                                      quantization_config=nf4_config))
-
+                                                           device_map="auto",
+                                                           quantization_config=nf4_config))
 
     def tokenize(self, prompt: str | list[str]) -> torch.Tensor:
-        return self.tokenizer(prompt, return_tensors="pt", padding=True,truncation=True,max_length=512)
+        return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=512)
 
     def tokens_indices_part_of_sentence(self, sentence, part_of_sentence):
         """
@@ -79,8 +78,8 @@ class LLama3Interface:
         try:
 
             token_starts_offsets = self.tokenizer(sentence,
-                                             return_offsets_mapping=True,
-                                             return_tensors="pt").offset_mapping[0].transpose(0, -1)[0].tolist()
+                                                  return_offsets_mapping=True,
+                                                  return_tensors="pt").offset_mapping[0].transpose(0, -1)[0].tolist()
             start_offset = find(sentence, part_of_sentence)
 
             if start_offset > 0 and sentence[start_offset - 1] == " ":
@@ -103,7 +102,7 @@ class LLama3Interface:
 
         return start_token_index, end_token_index
 
-    def get_hidden_layers(self, inputs) -> torch.Tensor:
+    def get_hidden_layers(self, inputs) -> tuple[torch.Tensor]:
         with torch.no_grad():
             outputs = self.model.forward(**inputs, output_hidden_states=True)
         return outputs["hidden_states"]

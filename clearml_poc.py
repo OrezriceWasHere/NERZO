@@ -11,23 +11,22 @@ def clearml_init():
     if ALLOW_CLEARML:
 
         Task.add_requirements("requirements.txt")
-        execution_task = Task.init(project_name="NER - Hidden layers",
-                                   task_name="hidden layers - same type vs different type",
+        execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
+                                   task_name="hidden layers - match an entity to another sentence to detect same entity",
                                    task_type=Task.TaskTypes.testing,
                                    reuse_last_task_id=False,)
 
-        if execution_task.running_locally() and RUNNING_REMOTE:
+        if execution_task.running_locally():
             name = input("enter description for task:\n")
             execution_task.set_name(name)
 
         if RUNNING_REMOTE:
-            execution_task.execute_remotely(queue_name="gpu", exit_process=True)
+            execution_task.execute_remotely(queue_name="cpu", exit_process=True)
 
 
 def clearml_display_image(image, iteration, series, description):
     if ALLOW_CLEARML:
         execution_task.get_logger().report_image(description,
-
                                                  image=image,
                                                  iteration=iteration,
                                                  series=series)
@@ -42,6 +41,7 @@ def add_scatter(title, series, iteration, values):
     if ALLOW_CLEARML:
         numpy_values = np.array(values)
         if numpy_values.ndim == 1:
+            # adding x dimension to be indexed of values (first value - 0, second value - 1, etc.)
             values = np.column_stack((np.arange(len(numpy_values)), numpy_values))
         execution_task.get_logger().report_scatter2d(title, series, scatter=values, iteration=iteration,
                                                      mode='lines+markers')

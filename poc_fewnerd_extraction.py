@@ -96,8 +96,6 @@ async def handle_coarse_type(entity_type: str):
     return expected_responses, received_response
 
 
-
-
 async def handle_fine_type(entity_type: str):
     documents_with_type = dataset_provider.get_by_fine_grained_type_fewnerd(entity_type)["hits"]["hits"]
     expected_responses = []
@@ -142,12 +140,12 @@ async def handle_fine_type(entity_type: str):
 
     return expected_responses, received_response
 
+
 async def main_fine_type():
-    intersting_types = ["GPE", "company", "artist/author", "politician", "athlete", "sportsteam", "education",
-                        "government/governmentagency", "sportsevent", "road/railway/highway/transit",
-                        "attack/battle/war/militaryconflict", "media/newspaper", "bodiesofwater", "actor",
-                        "biologything", "award", "writtenart", "music", "politicalparty", "sportsleague", "scholar",
-                        "film", "showorganization", "soldier", "airplane", "language", "disease", "island", "religion",
+    intersting_types = ["GPE", "company", "politician", "athlete", "sportsteam", "education",
+                        "sportsevent", "bodiesofwater", "actor", "biologything", "award", "writtenart", "music",
+                        "politicalparty", "sportsleague", "scholar",
+                        "film", "soldier", "airplane", "language", "disease", "island", "religion",
                         "currency", "chemicalthing", "director", "mountain", "broadcastprogram", "software",
                         "livingthing", "law", "car", "park", "astronomything", "theater", "sportsfacility", "weapon",
                         "game", "ship", "hospital", "god", "airport", "library", "educationaldegree", "medical",
@@ -199,6 +197,7 @@ def confusion_matrix(expected_responses, received_responses, entity_type, iterat
 
 if __name__ == "__main__":
     # Start async loop
+    clearml_poc.clearml_init()
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main_fine_type())
     loop.close()

@@ -202,6 +202,7 @@ def confusion_matrix(expected_responses, received_responses, entity_type, iterat
 
 if __name__ == "__main__":
     # Start async loop
+    clearml_poc.clearml_init()
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main_coarse_type())
     loop.close()

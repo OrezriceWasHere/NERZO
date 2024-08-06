@@ -21,7 +21,7 @@ def clearml_init():
             execution_task.set_name(name)
 
         if RUNNING_REMOTE:
-            execution_task.execute_remotely(queue_name="cpu", exit_process=True)
+            execution_task.execute_remotely(queue_name="gpu", exit_process=True)
 
 
 def clearml_display_image(image, iteration, series, description):

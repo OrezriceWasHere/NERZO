@@ -38,7 +38,7 @@ class LLama3Interface:
 
     def __init__(self):
         HUGGINGFACE_TOKEN = env.get("HUGGINGFACE_TOKEN")
-        LLAMA_3_ID = "meta-llama/Meta-Llama-3-8B"
+        LLAMA_3_ID = "meta-llama/Meta-Llama-3.1-8B"
 
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -52,9 +52,27 @@ class LLama3Interface:
         self.tokenizer = AutoTokenizer.from_pretrained(LLAMA_3_ID)
         self.tokenizer.pad_token = self.tokenizer.eos_token
 
+        self.extractable_parts = {}
+
         self.model = (AutoModelForCausalLM.from_pretrained(LLAMA_3_ID,
                                                            device_map="auto",
                                                            quantization_config=nf4_config))
+        self.register_hooks(self.model)
+
+    def hook_fn(self, name):
+        def hook(module, input, output):
+            if isinstance(output, torch.Tensor):
+                self.extractable_parts[name] = output
+            else:
+                self.extractable_parts[name] = output[0]
+
+        return hook
+
+    def register_hooks(self, model):
+        ignore = ["model.rotary_emb", "lm_head"]
+        for name, module in model.named_modules():
+            if name not in ignore:
+                module.register_forward_hook(self.hook_fn(name))
 
     def tokenize(self, prompt: str | list[str]) -> torch.Tensor:
         return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=512)
@@ -105,4 +123,16 @@ class LLama3Interface:
     def get_hidden_layers(self, inputs) -> tuple[torch.Tensor]:
         with torch.no_grad():
             outputs = self.model.forward(**inputs, output_hidden_states=True)
+
         return outputs["hidden_states"]
+
+    def get_hooked_hidden_layers(self, inputs) -> dict[str, torch.Tensor]:
+        with torch.no_grad():
+            self.extractable_parts.clear()
+            _ = self.model.forward(**inputs)
+        return self.extractable_parts
+
+    def get_attention_layers(self, inputs) -> tuple[torch.Tensor]:
+        with torch.no_grad():
+            outputs = self.model.forward(**inputs, output_attentions=True)
+        return outputs["attentions"]

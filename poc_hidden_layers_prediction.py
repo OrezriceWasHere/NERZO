@@ -10,6 +10,8 @@ import llama3_interface
 from random import shuffle
 import numpy as np
 from sklearn import metrics
+import torch.nn.functional as F
+import pandas as pd
 
 llama3: llama3_interface.LLama3Interface = None
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -57,6 +59,25 @@ def compute_word_similarity(entity, match):
     return cosine_similarities
 
 
+def compute_word_similarity_hooked(entity, match):
+    global llama3
+
+    tokens = llama3.tokenize([entity["text"], match["text"]])
+    start1, end1 = llama3.tokens_indices_part_of_sentence(entity["text"], entity["phrase"])
+    start2, end2 = llama3.tokens_indices_part_of_sentence(match["text"], match["phrase"])
+
+    hidden_layers_hook = llama3.get_hooked_hidden_layers(tokens)
+    cosine_similarities = []
+    for index, layer in enumerate(hidden_layers_hook):
+        h1, h2 = hidden_layers_hook[layer]
+        h1 = h1[end1]
+        h2 = h2[end2]
+        sim = F.cosine_similarity(h1.flatten(), h2.flatten(), dim=0).item()
+        cosine_similarities.append(sim)
+
+    return cosine_similarities
+
+
 def match_entity_with_strongest_word(entity, match):
     start2, end2 = llama3.tokens_indices_part_of_sentence(match["text"], match["phrase"])
 
@@ -72,6 +93,7 @@ def predict_word_match(entity, match):
     start2, end2 = llama3.tokens_indices_part_of_sentence(match["text"], match["phrase"])
     cosine_similarities = compute_word_similarity(entity, match)
     return cosine_similarities[:, end2]
+
 
 
 predictions, ground_truth = [], []
@@ -117,6 +139,47 @@ def find_optimal_threshold(predictions, real_values):
     optimal_idx = np.argmax(tpr - fpr)
     optimal_threshold = thresholds[optimal_idx]
     return optimal_threshold
+
+
+def find_threshold_hooked_epoch(pairs, different_type, epoch):
+    x1, x2 = pairs
+    x3 = random.choice(different_type)
+
+    predictions.append(compute_word_similarity_hooked(x1, x2))
+    predictions.append(compute_word_similarity_hooked(x1, x3))
+
+    keys = llama3.extractable_parts.keys()
+
+    ground_truth.append([1 for _ in range(len(keys))])
+    ground_truth.append([0 for _ in range(len(keys))])
+
+    x = np.asarray(predictions).transpose()
+    y = np.asarray(ground_truth).transpose()
+
+    optimal_threshold = np.asarray([find_optimal_threshold(x[key].flatten(), y[key].flatten()) for key in range(len(keys))])
+    optimal_threshold = optimal_threshold[:, np.newaxis]
+    accuracy = np.sum(((x >= optimal_threshold) == y), axis=1) / x.shape[1]
+
+    if epoch == 0:
+        df = pd.DataFrame(
+            data={"keys": keys,
+                  "shape": [str(llama3.extractable_parts[key].shape) for key in keys]},
+
+            index=list(range(len(keys)))
+        )
+        clearml_poc.add_table(
+            title="guideline for model's output",
+            series="llama model",
+            iteration=0,
+            table=df
+        )
+
+    clearml_poc.add_scatter(
+        title="using cosine similarities to separate between same and different entities",
+        series="same part of entity tag",
+        iteration=x.shape[1] / 2,
+        values=accuracy
+    )
 
 
 def find_threshold_epoch(pairs, different_type, epoch):
@@ -168,7 +231,7 @@ def main():
 
     counter = 0
 
-    action = "find_threshold"
+    action = "find_threshold_hooked"
 
     for type in types:
 
@@ -186,6 +249,8 @@ def main():
                 prediction_epoch(pairs, different_type, index)
             elif action == "find_threshold":
                 find_threshold_epoch(pairs, different_type, index)
+            elif action == "find_threshold_hooked":
+                find_threshold_hooked_epoch(pairs, different_type, index)
 
 
 if __name__ == "__main__":

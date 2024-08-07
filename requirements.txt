@@ -11,3 +11,4 @@ bitsandbytes
 accelerate
 protobuf==3.20.1
 matplotlib
+pandas

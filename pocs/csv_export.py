@@ -93,7 +93,7 @@ def create_csv():
                                                 count_per_type=1,
                                                 index="narrowed_example")
     written_header = False
-    with open(f"output.tsv", "w") as f:
+    with open(f"../output.tsv", "w") as f:
 
         for bucket in tqdm(all_entities["aggregations"]["x_terms"]["buckets"]):
             outputs = export_csv_bucket(bucket)

@@ -157,14 +157,15 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
     y = np.asarray(ground_truth).transpose()
 
     optimal_threshold = np.asarray([find_optimal_threshold(x[key].flatten(), y[key].flatten()) for key in range(len(keys))])
-    optimal_threshold = optimal_threshold[:, np.newaxis]
-    accuracy = np.sum(((x >= optimal_threshold) == y), axis=1) / x.shape[1]
+    optimal_threshold_seperator = optimal_threshold[:, np.newaxis]
+    accuracy = np.sum(((x >= optimal_threshold_seperator) == y), axis=1) / x.shape[1]
 
     if epoch == 0:
         df = pd.DataFrame(
             data={"keys": keys,
-                  "shape": [str(llama3.extractable_parts[key].shape) for key in keys]},
-
+                  "shape": [str(llama3.extractable_parts[key].shape) for key in keys],
+                  "threshold": optimal_threshold
+                  },
             index=list(range(len(keys)))
         )
         clearml_poc.add_table(
@@ -180,6 +181,7 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
         iteration=x.shape[1] / 2,
         values=accuracy
     )
+
 
 
 def find_threshold_epoch(pairs, different_type, epoch):
@@ -213,8 +215,6 @@ def main():
     global llama3
     llama3 = llama3_interface.LLama3Interface()
 
-    layers_count = 33
-    layers_list = list(range(layers_count))
 
     types = [
         "language",

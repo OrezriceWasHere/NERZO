@@ -3,6 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from transformers import BitsAndBytesConfig
 from huggingface_hub import login
+from transformers import T5EncoderModel
 
 
 def find(input_sentence, word):
@@ -38,7 +39,7 @@ class LLama3Interface:
 
     def __init__(self):
         HUGGINGFACE_TOKEN = env.get("HUGGINGFACE_TOKEN")
-        LLAMA_3_ID = "meta-llama/Meta-Llama-3.1-8B"
+        LLAMA_3_ID = "meta-llama/Meta-Llama-3.1-70B"
 
         nf4_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -54,9 +55,15 @@ class LLama3Interface:
 
         self.extractable_parts = {}
 
+        # T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
+        # self.model = T5EncoderModel.from_pretrained(LLAMA_3_ID,
+        #                                             quantization_config=nf4_config,
+        #                                             device_map="auto")
+
         self.model = (AutoModelForCausalLM.from_pretrained(LLAMA_3_ID,
-                                                           device_map="auto",
-                                                           quantization_config=nf4_config))
+                                                           # device_map="auto",
+                                                           # quantization_config=nf4_config
+                                                           ))
         self.register_hooks(self.model)
 
     def hook_fn(self, name):
@@ -69,7 +76,8 @@ class LLama3Interface:
         return hook
 
     def register_hooks(self, model):
-        ignore = ["model.rotary_emb", "lm_head"]
+        ignore = ["model.rotary_emb", "lm_head", "encoder.block.0.layer.0.SelfAttention.relative_attention_bias"]
+        ignore = ignore + [f"model.layers.{layer}.self_attn.rotary_emb" for layer in range(32)]
         for name, module in model.named_modules():
             if name not in ignore:
                 module.register_forward_hook(self.hook_fn(name))
@@ -93,26 +101,42 @@ class LLama3Interface:
         # The LLM's tokenizer splits the sentence into tokens, and this is the input for the model. We need to find the indices of the part of the sentence in order to learn its hidden states.
         assert part_of_sentence in sentence
 
+        use_offset_mapping = False
         try:
 
-            token_starts_offsets = self.tokenizer(sentence,
-                                                  return_offsets_mapping=True,
-                                                  return_tensors="pt").offset_mapping[0].transpose(0, -1)[0].tolist()
-            start_offset = find(sentence, part_of_sentence)
+            if not use_offset_mapping:
 
-            if start_offset > 0 and sentence[start_offset - 1] == " ":
-                # space in tokenization algorithm is included before the word
-                start_token_index = token_starts_offsets.index(start_offset - 1)
+                token_starts_offsets = self.tokenizer(sentence,
+                                                      return_offsets_mapping=True,
+                                                      return_tensors="pt").offset_mapping[0].transpose(0, -1)[
+                    0].tolist()
+                start_offset = find(sentence, part_of_sentence)
+
+                if start_offset > 0 and sentence[start_offset - 1] == " ":
+                    # space in tokenization algorithm is included before the word
+                    start_token_index = token_starts_offsets.index(start_offset - 1)
+                else:
+                    start_token_index = token_starts_offsets.index(start_offset)
+                # The start of sentence has a special token with no textual representation
+                start_token_index = max(1, start_token_index)
+
+                end_sentence_offset = start_offset + len(part_of_sentence)
+                if end_sentence_offset == len(sentence):
+                    end_token_index = len(token_starts_offsets)
+                else:
+                    end_token_index = token_starts_offsets.index(end_sentence_offset)
             else:
+                token_starts_offsets, token_end_offsets = self.tokenizer(sentence,
+                                                                         return_offsets_mapping=True,
+                                                                         return_tensors="pt").offset_mapping.transpose(0, -1)
+                token_starts_offsets, token_end_offsets = token_starts_offsets.squeeze(1).tolist(), token_end_offsets.squeeze(1).tolist()
+                start_offset = find(sentence, part_of_sentence)
                 start_token_index = token_starts_offsets.index(start_offset)
-            # The start of sentence has a special token with no textual representation
-            start_token_index = max(1, start_token_index)
+                end_offsets = start_offset + len(part_of_sentence)
+                end_token_index = token_end_offsets.index(end_offsets)
+                return start_token_index, end_token_index
 
-            end_sentence_offset = start_offset + len(part_of_sentence)
-            if end_sentence_offset == len(sentence):
-                end_token_index = len(token_starts_offsets)
-            else:
-                end_token_index = token_starts_offsets.index(end_sentence_offset)
+
 
         except Exception as e:
             print(f'for sentence: {sentence} and part of sentence: {part_of_sentence} the error is {e}')

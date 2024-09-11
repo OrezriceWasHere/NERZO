@@ -2,18 +2,18 @@ import dataset_provider
 import entity_classifier
 import random
 import torch
-import matplotlib.pyplot as plt
 from itertools import combinations
 from tqdm import tqdm
 import clearml_poc
-import llama3_interface
+import group_layers
+import llm_interface
 from random import shuffle
 import numpy as np
 from sklearn import metrics
 import torch.nn.functional as F
 import pandas as pd
 
-llama3: llama3_interface.LLama3Interface = None
+llm: llm_interface.LLMInterface = None
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -22,29 +22,29 @@ def get_sentences_and_entities(fine_entity: str):
     same_type, different_type = [], []
     for sentence in sentences_with_entity:
         sentence_text = sentence["_source"]["full_text"]
-        entities_of_fine_type = entity_classifier.pick_entities_of_finetype_fewnerd(sentence["_source"]["tagging"],
-                                                                                    fine_entity)
-        entities_of_different_type = list(
-            filter(lambda entity: entity not in entities_of_fine_type, sentence["_source"]["tagging"]))
-        same_type.extend(
-            {"text": sentence_text, "phrase": entity["phrase"].strip(), "id": entity["text_id"]} for entity in
-            entities_of_fine_type)
-        different_type.extend(
-            {"text": sentence_text, "phrase": entity["phrase"].strip(), "id": entity["text_id"]} for entity in
-            entities_of_different_type)
+        entities_of_fine_type = entity_classifier.pick_entities_of_finetype_fewnerd(sentence["_source"]["tagging"], fine_entity)
 
-    clearml_poc.add_text(f"entites: \n{sentences_with_entity}")
+        for entity in sentence["_source"]["tagging"]:
+            entity_info = {"text": sentence_text,
+                           "index_start": entity["index_start"],
+                            "index_end": entity["index_end"],
+                           "phrase": entity["phrase"].strip(),
+                           "id": entity["text_id"]}
+            if entity in entities_of_fine_type:
+                same_type.append(entity_info)
+            else:
+                different_type.append(entity_info)
 
     return same_type, different_type
 
 
 def compute_word_similarity(entity, match):
-    global llama3
+    global llm
 
-    tokens = llama3.tokenize([entity["text"], match["text"]])
-    start1, end1 = llama3.tokens_indices_part_of_sentence(entity["text"], entity["phrase"])
+    tokens = llm.tokenize([entity["text"], match["text"]])
+    start1, end1 = llm.tokens_indices_part_of_sentence(entity["text"], entity["phrase"])
 
-    h = torch.stack(llama3.get_hidden_layers(tokens)).to(device)
+    h = torch.stack(llm.get_hidden_layers(tokens)).to(device)
     h1, h2 = torch.split(h, [1, 1], dim=1)
 
     h1 = h1[:, :, end1 - 1, :]
@@ -60,13 +60,13 @@ def compute_word_similarity(entity, match):
 
 
 def compute_word_similarity_hooked(entity, match):
-    global llama3
+    global llm
 
-    tokens = llama3.tokenize([entity["text"], match["text"]])
-    start1, end1 = llama3.tokens_indices_part_of_sentence(entity["text"], entity["phrase"])
-    start2, end2 = llama3.tokens_indices_part_of_sentence(match["text"], match["phrase"])
+    tokens = llm.tokenize([entity["text"], match["text"]])
+    start1, end1 = llm.token_indices_given_text_indices(entity["text"], (entity["index_start"], entity["index_end"]))
+    start2, end2 = llm.token_indices_given_text_indices(match["text"], (match["index_start"], match["index_end"]))
 
-    hidden_layers_hook = llama3.get_hooked_hidden_layers(tokens)
+    hidden_layers_hook = llm.get_hooked_hidden_layers(tokens)
     cosine_similarities = []
     for index, layer in enumerate(hidden_layers_hook):
         h1, h2 = hidden_layers_hook[layer]
@@ -79,7 +79,7 @@ def compute_word_similarity_hooked(entity, match):
 
 
 def match_entity_with_strongest_word(entity, match):
-    start2, end2 = llama3.tokens_indices_part_of_sentence(match["text"], match["phrase"])
+    start2, end2 = llm.tokens_indices_part_of_sentence(match["text"], match["phrase"])
 
     cosine_similarities = compute_word_similarity(entity, match)
     most_similar_word = torch.argmax(cosine_similarities, dim=1)
@@ -90,7 +90,7 @@ def match_entity_with_strongest_word(entity, match):
 
 
 def predict_word_match(entity, match):
-    start2, end2 = llama3.tokens_indices_part_of_sentence(match["text"], match["phrase"])
+    start2, end2 = llm.tokens_indices_part_of_sentence(match["text"], match["phrase"])
     cosine_similarities = compute_word_similarity(entity, match)
     return cosine_similarities[:, end2]
 
@@ -141,6 +141,27 @@ def find_optimal_threshold(predictions, real_values):
     return optimal_threshold
 
 
+keys, item_to_group, group_to_item, group_to_indices, group_lcp_meanings = None, None, None, None, None
+
+
+def find_longest_common_prefix(words):
+    # Initialize the longest common prefix to the first word
+    longest_common_prefix = words[0]
+
+    # Loop through each word in the list of words
+    for word in words[1:]:
+        # Loop through each character in the current longest common prefix
+        for i in range(len(longest_common_prefix)):
+            # If the current character is not the same as the character in the same position in the current word
+            if i >= len(word) or longest_common_prefix[i] != word[i]:
+                # Update the longest common prefix and break out of the loop
+                longest_common_prefix = longest_common_prefix[:i]
+                break
+
+    # Return the longest common prefix
+    return longest_common_prefix
+
+
 def find_threshold_hooked_epoch(pairs, different_type, epoch):
     x1, x2 = pairs
     x3 = random.choice(different_type)
@@ -148,10 +169,20 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
     predictions.append(compute_word_similarity_hooked(x1, x2))
     predictions.append(compute_word_similarity_hooked(x1, x3))
 
-    keys = llama3.extractable_parts.keys()
+    global keys, item_to_group, group_to_item, group_to_indices, group_lcp_meanings
+    if not keys:
+        keys = list(llm.extractable_parts.keys())
+        item_to_group = group_layers.map_item_to_group(list(keys))
+        group_to_item = group_layers.group_layers(item_to_group)
+        group_to_indices = {group_id: [keys.index(item) for item in group if item in keys] for group_id, group in group_to_item.items()}
+        group_lcp_meanings = {group_id: find_longest_common_prefix([keys[item] for item in group_to_indices[group_id]]) for group_id in group_to_item.keys()}
+
 
     ground_truth.append([1 for _ in range(len(keys))])
     ground_truth.append([0 for _ in range(len(keys))])
+
+    if epoch % 1000 != 0:
+        return
 
     x = np.asarray(predictions).transpose()
     y = np.asarray(ground_truth).transpose()
@@ -163,24 +194,59 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
     if epoch == 0:
         df = pd.DataFrame(
             data={"keys": keys,
-                  "shape": [str(llama3.extractable_parts[key].shape) for key in keys],
-                  "threshold": optimal_threshold
+                  "shape": [str(llm.extractable_parts[key].shape) for key in keys]
                   },
             index=list(range(len(keys)))
         )
         clearml_poc.add_table(
             title="guideline for model's output",
-            series="llama model",
+            series="llm model",
             iteration=0,
             table=df
         )
 
+
+
+        item_to_group_df = pd.DataFrame(
+            data={"item": list(item_to_group.keys()),
+                    "group": list(item_to_group.values())
+                    },
+            index=list(range(len(item_to_group)))
+        )
+        clearml_poc.add_table(
+            title="item to group mapping",
+            series="llama model",
+            iteration=0,
+            table=item_to_group_df
+        )
+
+    threshold_df = pd.DataFrame(
+        data={"keys": keys,
+              "threshold": optimal_threshold
+              },
+        index=list(range(len(keys)))
+    )
+    clearml_poc.add_table(
+        title="optimal threshold for each layer",
+        series="llm model",
+        iteration=epoch,
+        table=threshold_df
+    )
     clearml_poc.add_scatter(
         title="using cosine similarities to separate between same and different entities",
         series="same part of entity tag",
         iteration=x.shape[1] / 2,
         values=accuracy
     )
+    for group_id, group in group_to_item.items():
+        group_indices = group_to_indices[group_id]
+
+        group_accuracy = np.sum(((x[group_indices] >= optimal_threshold_seperator[group_indices]) == y[group_indices]), axis=1) / x.shape[1]
+        clearml_poc.add_scatter(
+            title="cosine similarity threshold with groups in mind",
+            series=f'group {group_lcp_meanings[group_id]}',
+            iteration=x.shape[1] / 2,
+            values=group_accuracy)
 
 
 
@@ -212,8 +278,9 @@ def main():
     clearml_poc.clearml_init()
 
     assert torch.cuda.is_available(), "no gpu available"
-    global llama3
-    llama3 = llama3_interface.LLama3Interface()
+    global llm
+    LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
+    llm = llm_interface.LLMInterface(LLM_ID)
 
 
     types = [

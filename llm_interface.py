@@ -5,6 +5,8 @@ from transformers import BitsAndBytesConfig
 from huggingface_hub import login
 from transformers import T5EncoderModel
 
+import llama3_tokenizer
+
 
 def find(input_sentence, word):
     assert word in input_sentence, f"{word} not in {input_sentence}"
@@ -35,35 +37,49 @@ def find(input_sentence, word):
     raise ValueError(f"Could not find {word} in {input_sentence}")
 
 
-class LLama3Interface:
+def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None):
+    HUGGINGFACE_TOKEN = env.get("HUGGINGFACE_TOKEN")
+    login(token=HUGGINGFACE_TOKEN)
 
-    def __init__(self):
-        HUGGINGFACE_TOKEN = env.get("HUGGINGFACE_TOKEN")
-        LLAMA_3_ID = "meta-llama/Meta-Llama-3.1-70B"
+    nf4_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=torch.bfloat16
+    )
 
-        nf4_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.bfloat16
-        )
+    match tokenizer_llm_id:
+        case "meta-llama/Meta-Llama-3.1-8B":
+            tokenizer = llama3_tokenizer.CustomLlama3Tokenizer(tokenizer_llm_id)
+            tokenizer.tokenizer.pad_token = tokenizer.tokenizer.eos_token
+        case _:
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_llm_id)
 
-        login(token=HUGGINGFACE_TOKEN)
+    match llm_id:
+        case "google-t5/t5-11b":
+            T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
+            model = T5EncoderModel.from_pretrained(llm_id,
+                                                   quantization_config=nf4_config,
+                                                   device_map="auto")
 
-        self.tokenizer = AutoTokenizer.from_pretrained(LLAMA_3_ID)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        case _:
+            model = (AutoModelForCausalLM.from_pretrained(llm_id,
+                                                          device_map="auto",
+                                                          quantization_config=nf4_config
+                                                          ))
+
+    return model, tokenizer
+
+
+class LLMInterface:
+
+    def __init__(self, llm_id="meta-llama/Meta-Llama-3.1-8B", tokenizer_llm_id=None):
+        tokenizer_llm_id = tokenizer_llm_id or llm_id
+
+        print(f'LLM ID: {llm_id}')
+        self.model, self.tokenizer = load_model_tokenizer(llm_id, tokenizer_llm_id)
 
         self.extractable_parts = {}
-
-        # T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
-        # self.model = T5EncoderModel.from_pretrained(LLAMA_3_ID,
-        #                                             quantization_config=nf4_config,
-        #                                             device_map="auto")
-
-        self.model = (AutoModelForCausalLM.from_pretrained(LLAMA_3_ID,
-                                                           # device_map="auto",
-                                                           # quantization_config=nf4_config
-                                                           ))
         self.register_hooks(self.model)
 
     def hook_fn(self, name):
@@ -128,8 +144,10 @@ class LLama3Interface:
             else:
                 token_starts_offsets, token_end_offsets = self.tokenizer(sentence,
                                                                          return_offsets_mapping=True,
-                                                                         return_tensors="pt").offset_mapping.transpose(0, -1)
-                token_starts_offsets, token_end_offsets = token_starts_offsets.squeeze(1).tolist(), token_end_offsets.squeeze(1).tolist()
+                                                                         return_tensors="pt").offset_mapping.transpose(
+                    0, -1)
+                token_starts_offsets, token_end_offsets = token_starts_offsets.squeeze(
+                    1).tolist(), token_end_offsets.squeeze(1).tolist()
                 start_offset = find(sentence, part_of_sentence)
                 start_token_index = token_starts_offsets.index(start_offset)
                 end_offsets = start_offset + len(part_of_sentence)
@@ -143,6 +161,34 @@ class LLama3Interface:
             raise e
 
         return start_token_index, end_token_index
+
+    def token_indices_given_text_indices(self, sentence, text_indices):
+        # offsets = self.tokenizer(sentence,
+        #                          return_offsets_mapping=True,
+        #                          return_tensors="pt").offset_mapping[0].transpose(0, -1)
+        #
+        # Tokenize the sentence and get word-to-token mappings (word_ids)
+        # tokens = self.tokenizer.tokenize(sentence)
+        encoding = self.tokenizer(sentence, return_offsets_mapping=True)
+
+        # Get the offsets for each token (start, end positions in original sentence)
+        offsets = encoding['offset_mapping']
+
+        start_idx, end_idx = text_indices
+
+        # Find the first and last tokens that correspond to the given word's string indices
+        first_token_idx, last_token_idx = None, None
+
+        for i, (token_start, token_end) in enumerate(offsets):
+            if token_start <= start_idx < token_end:  # First token that overlaps with start_idx
+                first_token_idx = i
+            if token_start < end_idx <= token_end:  # Last token that overlaps with end_idx
+                last_token_idx = i
+                break
+
+        assert first_token_idx is not None and last_token_idx is not None, f"Could not find token indices for text indices {text_indices} in sentence {sentence}"
+
+        return first_token_idx, last_token_idx
 
     def get_hidden_layers(self, inputs) -> tuple[torch.Tensor]:
         with torch.no_grad():

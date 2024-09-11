@@ -10,7 +10,7 @@ import clearml_poc
 import llama3_interface
 from random import shuffle
 
-llama3: llama3_interface.LLama3Interface = None
+llm: llama3_interface.LLama3Interface = None
 
 
 def get_sentences_and_entities(fine_entity: str):
@@ -35,7 +35,7 @@ def get_sentences_and_entities(fine_entity: str):
 
 
 def similarities_in_layer(x1, x2, x3, h, layer):
-    global llama3
+    global llm
     h1, h2, h3 = h[layer]
     start1, end1 = llama3.tokens_indices_part_of_sentence(x1["text"], x1["phrase"])
     start2, end2 = llama3.tokens_indices_part_of_sentence(x2["text"], x2["phrase"])
@@ -55,7 +55,7 @@ def main():
     clearml_poc.clearml_init()
 
     assert torch.cuda.is_available(), "no gpu available"
-    global llama3
+    global llm
     llama3 = llama3_interface.LLama3Interface()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

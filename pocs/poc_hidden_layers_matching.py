@@ -13,7 +13,7 @@ import numpy as np
 
 from torch.nn.functional import normalize
 
-llama3: llama3_interface.LLama3Interface = None
+llm: llama3_interface.LLama3Interface = None
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -34,7 +34,7 @@ def get_sentences_and_entities(fine_entity: str):
 
 
 def match_entity_with_strongest_word(entity, possible_matches):
-    global llama3
+    global llm
 
 
     tokens = llama3.tokenize([entity["text"], possible_matches[0]["text"]])
@@ -72,7 +72,7 @@ def main():
     clearml_poc.clearml_init()
 
     assert torch.cuda.is_available(), "no gpu available"
-    global llama3
+    global llm
     llama3 = llama3_interface.LLama3Interface()
 
     layers_count = 33

@@ -69,7 +69,8 @@ def query_get_by_entity_type(entity_type: str) -> dict:
     }
 
 
-def query_get_by_fine_grained_fewnerd(fine_grained_type: str) -> dict:
+def query_get_by_fine_grained_fewnerd(fine_grained_type: str | list[str]) -> dict:
+    fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
     return {
         "query": {
             "function_score": {
@@ -84,7 +85,7 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str) -> dict:
                                 }
                             },
                             {
-                                "term": {
+                                "terms": {
                                     "tagging.fine_type": fine_grained_type
                                 }
                             }
@@ -99,7 +100,10 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str) -> dict:
                 "boost_mode": 'sum'
             }
         },
-        "size": 100
+        "sort": [
+            {"tagging.fine_type": {"order": "asc"}}
+        ],
+        "size": 20
     }
 
 

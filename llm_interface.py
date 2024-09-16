@@ -67,19 +67,24 @@ def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None):
                                                           device_map="auto",
                                                           quantization_config=nf4_config
                                                           ))
+    model.model.layers = model.model.layers[:18]
+    model = model.eval()
 
     return model, tokenizer
 
 
 class LLMInterface:
 
-    def __init__(self, llm_id="meta-llama/Meta-Llama-3.1-8B", tokenizer_llm_id=None):
+    def __init__(self, llm_id="meta-llama/Meta-Llama-3.1-8B",
+                 interested_layers=None,
+                 tokenizer_llm_id=None):
         tokenizer_llm_id = tokenizer_llm_id or llm_id
 
         print(f'LLM ID: {llm_id}')
         self.model, self.tokenizer = load_model_tokenizer(llm_id, tokenizer_llm_id)
 
         self.extractable_parts = {}
+        self.interested_layers = interested_layers or []
         self.register_hooks(self.model)
 
     def hook_fn(self, name):
@@ -94,8 +99,11 @@ class LLMInterface:
     def register_hooks(self, model):
         ignore = ["model.rotary_emb", "lm_head", "encoder.block.0.layer.0.SelfAttention.relative_attention_bias"]
         ignore = ignore + [f"model.layers.{layer}.self_attn.rotary_emb" for layer in range(32)]
+
         for name, module in model.named_modules():
-            if name not in ignore:
+            if name in ignore:
+                continue
+            if any([not self.interested_layers, name in self.interested_layers]):
                 module.register_forward_hook(self.hook_fn(name))
 
     def tokenize(self, prompt: str | list[str]) -> torch.Tensor:
@@ -193,8 +201,15 @@ class LLMInterface:
     def get_hidden_layers(self, inputs) -> tuple[torch.Tensor]:
         with torch.no_grad():
             outputs = self.model.forward(**inputs, output_hidden_states=True)
-
         return outputs["hidden_states"]
+
+    def get_llm_at_layer(self, inputs, layer, retain_layers_dict=False) -> torch.Tensor:
+        parts = self.get_hooked_hidden_layers(inputs)
+        h = parts[layer].clone().detach()
+        if not retain_layers_dict:
+            self.extractable_parts.clear()
+            parts.clear()
+        return h
 
     def get_hooked_hidden_layers(self, inputs) -> dict[str, torch.Tensor]:
         with torch.no_grad():

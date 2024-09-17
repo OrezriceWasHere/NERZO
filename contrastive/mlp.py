@@ -1,26 +1,4 @@
 import torch
-from torch.nn import functional as F
-
-class SwiGLU(torch.nn.Module):
-    "from https://github.com/lucidrains/PaLM-pytorch/blob/main/palm_pytorch/palm_pytorch.py"
-    def forward(self, x):
-        x, gate = x.chunk(2, dim=-1)
-        return F.silu(gate) * x
-
-
-# class SwiGLU(torch.nn.Module):
-#
-#     def __init__(self, w1, w2, w3) -> None:
-#         super().__init__()
-#         self.w1 = w1
-#         self.w2 = w2
-#         self.w3 = w3
-#
-#     def forward(self, x):
-#         x1 = F.linear(x, self.w1.weight)
-#         x2 = F.linear(x, self.w2.weight)
-#         hidden = F.silu(x1) * x2
-#         return F.linear(hidden, self.w3.weight)
 
 class ContrastiveMLP(torch.nn.Module):
     def __init__(self, input_size, hidden_size, output_size,

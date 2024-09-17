@@ -3,10 +3,9 @@ from collections import Counter
 from random import shuffle
 import torch
 import entity_classifier
-from llm_interface import LLMInterface
 
 
-def yield_dataset(llm:LLMInterface, llm_hidden_layer: str) -> tuple[torch.Tensor]:
+def yield_dataset() -> tuple[torch.Tensor]:
     types = [
         "language",
         "athlete",

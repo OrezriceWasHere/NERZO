@@ -18,15 +18,14 @@ def clearml_allowed(func):
 @clearml_allowed
 def clearml_init():
     global execution_task
-    # Task.add_requirements("requirements.txt")
+    Task.add_requirements("-rrequirements.txt")
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
                                task_name="hidden layers - match an entity to another sentence to detect same entity",
                                task_type=Task.TaskTypes.testing,
                                reuse_last_task_id=False)
 
     if execution_task.running_locally():
-        #name = input("enter description for task:\n")
-        name = "llama 3 ner"
+        name = input("enter description for task:\n")
         execution_task.set_name(name)
 
     if RUNNING_REMOTE:

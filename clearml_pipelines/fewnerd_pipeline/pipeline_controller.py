@@ -1,5 +1,5 @@
 from clearml.automation import PipelineController
-
+from os import environ as env
 
 def pre_execute_callback_example(a_pipeline, a_node, current_param_override):
     # type (PipelineController, PipelineController.Node, dict) -> bool
@@ -23,10 +23,12 @@ def post_execute_callback_example(a_pipeline, a_node):
 # Connecting ClearML with the current pipeline,
 # from here on everything is logged automatically
 pipe = PipelineController(
-    name="Indexing FEWNERD Dataset into elasticsearch", project="fewnerd_pipeline", version="0.0.1", add_pipeline_tags=False
+    packages="requirements.txt",
+    name="Indexing FEWNERD Dataset into elasticsearch",
+    project="fewnerd_pipeline", version="0.0.2", add_pipeline_tags=False
 )
 
-pipe.set_default_execution_queue("cpu")
+pipe.set_default_execution_queue("gpu")
 
 pipe.add_step(
     name="stage_download",
@@ -34,7 +36,7 @@ pipe.add_step(
     base_task_name="Pipeline step 1 dataset artifact",
     pre_execute_callback=pre_execute_callback_example,
     post_execute_callback=post_execute_callback_example,
-
+    cache_executed_step=True,
 )
 
 pipe.add_step(
@@ -44,6 +46,7 @@ pipe.add_step(
     base_task_name="Pipeline step 2 jsonify dataset",
     pre_execute_callback=pre_execute_callback_example,
     post_execute_callback=post_execute_callback_example,
+    cache_executed_step=True,
 )
 
 pipe.add_step(
@@ -57,9 +60,14 @@ pipe.add_step(
 
 
 # for debugging purposes use local jobs
-pipe.start_locally(run_pipeline_steps_locally=True)
+
+SHOULD_DEPLOY = env.get("RUNNING_REMOTE", "no") == "yes"
+
+if SHOULD_DEPLOY:
+    pipe.start(queue='gpu')
+else:
+    pipe.start_locally(run_pipeline_steps_locally=True)
 
 # Starting the pipeline (in the background)
-# pipe.start(queue='cpu')
 
 print("done")

@@ -1,16 +1,21 @@
 import json
-import pickle
 from uuid import uuid4
-
 from clearml import Task, StorageManager
-from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+from clearml import StorageManager, Dataset
+
+from llm_interface import LLMInterface
+
 
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
+Task.add_requirements("-rrequirements.txt")
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 2 jsonify dataset", reuse_last_task_id=False)
-
 task.execute_remotely()
+
+llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "model.layers.17.self_attn.v_proj"
+db_key = "llama_3_17_v_proj"
+llm = LLMInterface(llm_id=llm_id, interested_layers=[layer])
 
 
 def split_into_document(dataset_file):
@@ -49,6 +54,14 @@ def decide_word_tagging(tagging):
         return "O", "O"
     return tagging.split("-")
 
+def create_embedding(text, indices):
+    tokens = llm.tokenize(text)
+    llm_indices = llm.token_indices_given_text_indices(text, indices)
+    h = llm.get_llm_at_layer(tokens, layer)[0]
+    start = h[llm_indices[0]]
+    end = h[llm_indices[1]]
+    return start, end
+
 def process_document(document):
 
     prev_word = None
@@ -74,7 +87,7 @@ def process_document(document):
                 "coarse_type": coarse_tag,
                 "fine_type": fine_tag,
                 "index_start": len(full_text) + (1 if prev_word and len(word) != len(addition) else 0),
-                "index_end": len(full_text)  +  len(addition)
+                "index_end": len(full_text)  +  len(addition),
             })
         elif in_entity:
             tagging_array[-1]["phrase"] += addition
@@ -89,12 +102,15 @@ def process_document(document):
         tagging["all_text"] = full_text
         tagging["text_id"] = text_id
         assert tagging["all_text"][tagging["index_start"]:tagging["index_end"]] == tagging["phrase"]
+        start, end = create_embedding(full_text, (tagging["index_start"], tagging["index_end"]))
+        tagging["embedding"] = {
+            db_key: {
+                "start": start.tolist(),
+                "end": end.tolist()
+            }
+        }
 
-    return {
-        "text_id": text_id,
-        "full_text": full_text,
-        "tagging": tagging_array
-    }
+    return tagging_array
 
 
 def process_dataset(dataset_url):
@@ -103,18 +119,26 @@ def process_dataset(dataset_url):
     processed_documents = []
     for document in tqdm(documents):
         processed_document = process_document(document)
-        processed_documents.append(processed_document)
+        processed_documents.extend(processed_document)
     return processed_documents
 
 
-from step_download import datasets
-for dataset in tqdm(datasets):
+for dataset in tqdm(fewnerd_dataset.datasets):
     file_dir = dataset["json"]
     with open(file_dir, "w") as file:
         processed_documents = process_dataset(dataset["url"])
+
         file.write(json.dumps(processed_documents))
-    task.upload_artifact(f'json-dataset-{dataset["env"]}',
-                         artifact_object=file_dir)
+        clearml_dataset = Dataset.create(dataset_name=file_dir, dataset_project="fewnerd_pipeline")
+        clearml_dataset.add_files(path=file_dir)
+
+        # Dataset is uploaded to the ClearML Server by default
+        clearml_dataset.upload()
+        clearml_dataset.finalize()
+
+
+    # task.upload_artifact(f'json-dataset-{dataset["env"]}',
+    #                      artifact_object=file_dir)
 
 
 

@@ -1,4 +1,5 @@
 from clearml import Task, StorageManager
+import fewnerd_dataset
 
 # create an dataset experiment
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 1 dataset artifact")
@@ -6,28 +7,7 @@ task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 1 dat
 # only create the task, we will actually execute it later
 task.execute_remotely()
 
-datasets = [
-    {
-        "url": "https://huggingface.co/datasets/Rosenberg/fewnerd/resolve/main/dev-supervised.txt",
-        "name": "dev-supervised.txt",
-        "json": "dev-supervised.json",
-        "env": "dev"
-    },
-    {
-        "url": "https://huggingface.co/datasets/Rosenberg/fewnerd/resolve/main/train-supervised.txt",
-        "name": "train-supervised.txt",
-        "json": "train-supervised.json",
-        "env": "train"
-    },
-    {
-        "url": "https://huggingface.co/datasets/Rosenberg/fewnerd/resolve/main/test-supervised.txt",
-        "name": "test-supervised.txt",
-        "json": "test-supervised.json",
-        "env": "test"
-    }
-]
-
-for dataset in datasets:
+for dataset in fewnerd_dataset.datasets:
     url_dev = dataset["url"]
     name = dataset["name"]
     env = dataset["env"]

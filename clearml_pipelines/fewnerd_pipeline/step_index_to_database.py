@@ -1,17 +1,18 @@
 import json
 import os
 
-from clearml import Task
+from clearml import Task, Dataset
 from elasticsearch import Elasticsearch
 from tqdm import tqdm
+
+from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 3 index to database",
                  reuse_last_task_id=False)
 
-task.execute_remotely()
-
+# task.execute_remotely()
 
 hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "https://dsicscpu01:9200"
 user = os.environ.get("ELASTICSEARCH_USER") or "elastic"
@@ -20,33 +21,46 @@ password = os.environ.get("ELASTICSEARCH_PASSWORD") or "XXX"
 mapping = {
     "mappings": {
         "properties": {
-            "full_text": {
+            "all_text": {
                 "type": "text"
             },
-            "tagging": {
-                "properties": {
-                    "coarse_type": {
-                        "type": "keyword"
-                    },
-                    "fine_type": {
-                        "type": "keyword"
-                    },
-                    "index_start": {
-                        "type": "integer"
-                    },
-                    "index_end": {
-                        "type": "integer"
-                    },
-                    "phrase": {
-                        "type": "text"
-                    },
-                    "text_id": {
-                        "type": "keyword"
-                    }
-                }
+            "coarse_type": {
+                "type": "keyword"
+            },
+            "fine_type": {
+                "type": "keyword"
+            },
+            "index_end": {
+                "type": "integer"
+            },
+            "index_start": {
+                "type": "integer"
+            },
+            "phrase": {
+                "type": "text"
             },
             "text_id": {
                 "type": "keyword"
+            },
+            "embeddings": {
+                "type": "object",
+                "properties": {
+                    "llama_3_17_v_proj": {
+                        "type": "object",
+                        "properties": {
+                            "start": {
+                                "type": "dense_vector",
+                                "dims": 1024,
+                                "index": "false"
+                            },
+                            "end": {
+                                "type": "dense_vector",
+                                "dims": 1024,
+                                "index": "false"
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -67,30 +81,24 @@ def write_to_index(data, index):
     return response
 
 
-
-# Find task of previous step by name - pipeline step 2 jsonify dataset
-previous_task = Task.get_task(project_name="fewnerd_pipeline",
-                              task_name="Pipeline step 2 jsonify dataset",
-                              task_filter={'order_by': ["-last_update"]})
-# Get the artifacts from the previous step
-previous_task_artifacts = previous_task.artifacts
-
 # Iterate over all dataset, and get artifacts
-from step_download import datasets
+# from step_download import datasets
 
-for dataset in tqdm(datasets):
+
+for dataset in tqdm(fewnerd_dataset.datasets):
     env = dataset["env"]
     # Load the artifact
-    dataset = json.load(open(dataset["json"], "r"))
+    dataset_dir = Dataset.get(dataset_name=dataset["json"], dataset_project="fewnerd_pipeline").get_local_copy()
+    dataset = json.load(open(os.path.join(dataset_dir, dataset["json"])))
     # Process the dataset
     print(f"Processing dataset {env}")
 
-    ensure_existing_free_index(f"fewnerd_v2_{env}", mapping)
+    index = f"fewnerd_v3_{env}"
+
+    ensure_existing_free_index(index, mapping)
 
     for document in tqdm(dataset):
-        write_to_index(document, f"fewnerd_v2_{env}")
-
-
+        write_to_index(document, index)
 
 print('Notice, artifacts are uploaded in the background')
 print('Done')

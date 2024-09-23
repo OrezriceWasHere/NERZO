@@ -107,6 +107,56 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str | list[str]) -> dic
     }
 
 
+def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | list[str]) -> dict:
+    fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
+    return {
+        "query": {
+            "function_score": {
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {
+                                "terms": {
+                                    "fine_type": fine_grained_type
+                                }
+                            }
+                        ]
+                    }
+                },
+                "boost": "5",
+                "random_score": {
+                    "seed": 12345678910,
+                    "field": "_seq_no"
+                },
+                "boost_mode": "sum"
+            }
+        },
+        "size": 100
+    }
+
+
+def query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type: str | list[str]) -> dict:
+    fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
+    return {
+        "query": {
+            "terms": {
+                "fine_type": fine_grained_type
+            }
+        },
+        "sort": [
+            {"fine_type": {"order": "asc"}}
+        ],
+        "size": 100
+    }
+
+
+def query_get_by_fine_grained_fewnerd_v3(fine_grained_type: str | list[str], randomized=True) -> dict:
+    fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
+    if randomized:
+        return query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type)
+    return query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type)
+
+
 def query_get_by_coarse_grained_fewnerd(coarse_grained_type: str) -> dict:
     return {
         "query": {

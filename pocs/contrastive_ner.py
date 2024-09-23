@@ -1,111 +1,161 @@
+import random
 import clearml_poc
 from contrastive.args import Arguments
 from contrastive.mlp import ContrastiveMLP, Detector
 from contrastive.loss import ContrastiveLoss
 import torch
-import llm_interface
 from contrastive import fewnerd_processor
 import torch.nn.functional as F
-from tqdm import tqdm
+from tqdm import trange
+
 
 def main():
-    for index, (same_type, different_type) in enumerate(tqdm(fewnerd_processor.yield_dataset())):
-        torch.cuda.empty_cache()
-
-        same_type = same_type[:len(same_type) - len(same_type) % 2]
-        same_type = forward_at_llm(same_type).to(device)
-        different_type = forward_at_llm(different_type).to(device)
-
-        if index % 2 == 0:
-            train(index, same_type, different_type)
-        else:
-            evaluate(index, same_type, different_type)
+    epochs = 500
+    index = 0
+    args.accumulation_steps = 1
+    for e in trange(epochs):
+        train(e)
+        evaluate(e)
 
 
-def train(index, same_type, different_type):
+def avg(l):
+    return sum(l) / len(l)
+
+
+def train(index):
     similarity_model.train()
     classifier_model.train()
 
-    good_batch_forward, bad_batch_forward, first_half, second_half = generate_pairs(same_type, different_type)
+    losses = []
+    good_similarities = []
+    bad_similarities = []
+    classifier_accuracies = []
 
-    optimizer.zero_grad()
+    for same_type, different_type in fewnerd_processor.yield_train_dataset():
 
-    good_similarity, bad_similarity, similarity_loss = compute_similarity(first_half,
-                                                                          second_half,
-                                                                          good_batch_forward,
-                                                                          bad_batch_forward).values()
-    classifier_accuracy, classifier_loss = compute_accuracy(first_half, second_half, bad_batch_forward).values()
-    loss = similarity_loss + classifier_loss
-
-    loss.backward()
-    optimizer.step()
-    log_training_metrics(index, loss.item(), good_similarity.item(), bad_similarity.item(), classifier_accuracy,
-                         series="train")
+        optimizer.zero_grad()
+        good_batch, bad_batch = pick_llm_output(same_type, different_type)
 
 
-def evaluate(index, same_type, different_type):
+        good_similarity, bad_similarity, similarity_loss = compute_similarity(
+                                                                              good_batch,
+                                                                              bad_batch).values()
+        classifier_accuracy, classifier_loss = compute_accuracy(good_batch, bad_batch).values()
+        # similarity_loss.backward()
+
+        optimizer.step()
+
+        losses.append(classifier_loss + similarity_loss)
+        good_similarities.append(good_similarity)
+        bad_similarities.append(bad_similarity)
+        classifier_accuracies.append(classifier_accuracy)
+
+    log_training_metrics(index, avg(losses), avg(good_similarities), avg(bad_similarities),
+                             avg(classifier_accuracies),
+                             series="train")
+
+
+def evaluate(index):
     similarity_model.eval()
     classifier_model.eval()
 
-    good_batch_forward, bad_batch_forward, first_half, second_half = generate_pairs(same_type, different_type)
+    losses = []
+    good_similarities = []
+    bad_similarities = []
+    classifier_accuracies = []
 
-    good_similarity, bad_similarity, similarity_loss = compute_similarity(first_half,
-                                                                          second_half,
-                                                                          good_batch_forward,
-                                                                          bad_batch_forward).values()
-    classifier_accuracy, classifier_loss = compute_accuracy(first_half, second_half, bad_batch_forward).values()
-    loss = similarity_loss + classifier_loss
+    for same_type, different_type in fewnerd_processor.yield_test_dataset():
 
-    log_training_metrics(index, loss.item(), good_similarity.item(), bad_similarity.item(), classifier_accuracy,
-                         series="eval")
+        good_batch, bad_batch = pick_llm_output(same_type, different_type)
+        good_batch.requires_grad = False
+        bad_batch.requires_grad = False
 
+        good_similarity, bad_similarity, similarity_loss = compute_similarity(
+                                                                              good_batch,
+                                                                              bad_batch).values()
+        classifier_accuracy, classifier_loss = compute_accuracy(good_batch, bad_batch).values()
+        # similarity_loss.backward()
 
-def forward_at_llm(batch) -> torch.Tensor:
-    tokens = llm.tokenize([x["text"] for x in batch])
-    indices = [llm.token_indices_given_text_indices(x["text"], (x["index_start"], x["index_end"])) for x in batch]
-    h = llm.get_llm_at_layer(tokens, llm_hidden_layer)
-    h = [h[end] for h, (start, end) in zip(h, indices)]
-    h = torch.stack(h).cuda().float()
-    torch.cuda.empty_cache()
-    return h
+        losses.append(classifier_loss + similarity_loss)
+        good_similarities.append(good_similarity)
+        bad_similarities.append(bad_similarity)
+        classifier_accuracies.append(classifier_accuracy)
 
-
-def generate_pairs(same_type, different_type):
-    good_batch_forward = similarity_model(same_type)
-    bad_batch_forward = similarity_model(different_type)[:len(good_batch_forward)]
-    first_half, second_half = good_batch_forward.chunk(2, dim=0)
-    return good_batch_forward, bad_batch_forward, first_half, second_half
+    log_training_metrics(index, avg(losses), avg(good_similarities), avg(bad_similarities),
+                             avg(classifier_accuracies),
+                             series="eval")
 
 
-def compute_accuracy(good_first_half,
-                     good_second_half,
-                     bad_batch_forward):
-    similarity_from = torch.concat((good_first_half, good_first_half), dim=0).to(device)
-    similarity_to = torch.concat((good_second_half, bad_batch_forward[:len(good_first_half)]), dim=0).to(device)
-    labels = torch.tensor([1] * len(good_first_half) + [0] * len(good_first_half)).to(device)
-    classification_prediction = classifier_model(similarity_from, similarity_to)
-    classifier_loss = classifier_criterion(classification_prediction, labels)
-    accuracy = torch.sum(torch.argmax(classification_prediction, dim=-1) == labels).item() / \
-               classification_prediction.shape[0]
+def pick_llm_output(same_type, different_type):
+    tensorify = lambda batch: torch.stack(
+        [torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]) for item in batch]).to(device)
+    good_batch = tensorify(same_type)
+    bad_batch = tensorify(different_type)
+    return good_batch, bad_batch
+
+
+def compute_accuracy(good_batch, bad_batch):
+    with torch.no_grad():
+        good_batch_forward = similarity_model(good_batch).clone().detach()
+        bad_batch_forward = similarity_model(bad_batch).clone().detach()
+
+    accuracies, losses = [], []
+    for query, positive_examples, negative_examples in generate_triplets(good_batch_forward, bad_batch_forward, 1):
+        labels = torch.tensor([1] * len(positive_examples) + [0] * len(negative_examples)).to(device)
+        true_classification_prediction = classifier_model(query, positive_examples)
+        false_classfication_prediction = classifier_model(query, negative_examples)
+        classification_predication = torch.cat((true_classification_prediction, false_classfication_prediction), dim=0)
+        classifier_loss = classifier_criterion(classification_predication, labels)
+        classifier_loss.backward()
+        accuracy = torch.sum(torch.argmax(classification_predication, dim=-1) == labels).item() / \
+                   classification_predication.shape[0]
+        accuracies.append(accuracy)
+        losses.append(classifier_loss.item())
 
     return {
-        "accuracy": accuracy,
-        "loss": classifier_loss
+        "accuracy": avg(accuracies),
+        "loss": avg(losses)
     }
 
+def generate_triplets(good_examples, bad_examples, amount=1) -> tuple[torch.Tensor]:
+    amount = min(amount, len(good_examples))
+    possible_indices = list(range(good_examples.shape[0]))
+    good_indices = random.choices(range(len(good_examples)), k=amount)
+    for selected_index in random.choices(possible_indices, k=amount):
+        query = good_examples[selected_index].unsqueeze(0)
+        positive_examples = torch.cat((good_examples[:selected_index], good_examples[selected_index + 1:]), dim=0)
+        negative_examples = bad_examples[:len(positive_examples)]
+        yield query, positive_examples, negative_examples
 
-def compute_similarity(good_first_half,
-                       good_second_half,
-                       good_batch_forward,
-                       bad_batch_forward):
-    good_similarity = F.cosine_similarity(good_first_half, good_second_half, dim=-1).mean()
-    bad_similarity = F.cosine_similarity(good_batch_forward, bad_batch_forward[:len(good_batch_forward)], dim=-1).mean()
-    loss = similarity_criterion(good_first_half, good_second_half, bad_batch_forward)
+
+
+
+
+def compute_similarity(
+                       good_batch,
+                       bad_batch):
+
+    good_similarities = []
+    bad_similarities = []
+    losses = []
+
+    number_of_examples = min(20, good_batch.shape[0] // 2)
+    for query, positive_examples, negative_examples in generate_triplets(good_batch, bad_batch, number_of_examples):
+        query = similarity_model(query)
+        positive_examples = similarity_model(positive_examples)
+        negative_examples = similarity_model(negative_examples)
+        loss = similarity_criterion(query, positive_examples, negative_examples)
+        loss.backward()
+
+        losses.append(loss.item())
+        good_similarities.append(F.cosine_similarity(query, positive_examples, dim=-1).mean().item())
+        bad_similarities.append(F.cosine_similarity(query, negative_examples, dim=-1).mean().item())
+
 
     return {
-        "good_similarity": good_similarity,
-        "bad_similarity": bad_similarity,
-        "loss": loss
+        "good_similarity": avg(good_similarities),
+        "bad_similarity": avg(bad_similarities),
+        "loss": avg(losses)
     }
 
 
@@ -120,8 +170,8 @@ if __name__ == "__main__":
     clearml_poc.clearml_init()
     assert torch.cuda.is_available(), "no gpu available"
     args: Arguments = Arguments()
-    llm = llm_interface.LLMInterface(args.llm_id, interested_layers=[args.llm_hidden_layer])
-    llm_hidden_layer = args.llm_hidden_layer
+    # llm = llm_interface.LLMInterface(args.llm_id, interested_layers=[args.llm_hidden_layer])
+    # llm_hidden_layer = args.llm_hidden_layer
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

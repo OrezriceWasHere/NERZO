@@ -59,9 +59,9 @@ def get_by_fine_grained_type_fewnerd(fine_grained_type: str):
     return response
 
 
-def yield_by_fine_grained_type_fewnerd(fine_grained_types: list[str], scroll: str = "20m"):
-    query = queries.query_get_by_fine_grained_fewnerd(fine_grained_types)
-    index = "fewnerd_v2_*"
+def yield_by_fine_grained_type_fewnerd_v3(fine_grained_types: list[str], scroll: str = "20m", randomize=False):
+    query = queries.query_get_by_fine_grained_fewnerd_v3(fine_grained_types, randomize)
+    index = "fewnerd_v3_*"
     response = es.search(index=index, body=query, scroll=scroll)
     scroll_id = response.get("_scroll_id")
     hits = response.get("hits", {}).get("hits", [])

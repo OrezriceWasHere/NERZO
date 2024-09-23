@@ -135,7 +135,7 @@ def compute_similarity(
     bad_similarities = []
     losses = []
 
-    number_of_examples = min(20, good_batch.shape[0] // 2)
+    number_of_examples = min(args.number_of_examples, good_batch.shape[0] // 2)
     for query, positive_examples, negative_examples in generate_triplets(good_batch, bad_batch, number_of_examples):
         query = similarity_model(query)
         positive_examples = similarity_model(positive_examples)

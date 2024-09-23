@@ -38,7 +38,6 @@ def train(epoch):
                                                                               good_batch,
                                                                               bad_batch).values()
         classifier_accuracy, classifier_loss = compute_accuracy(good_batch, bad_batch).values()
-        # similarity_loss.backward()
 
         optimizer.step()
 
@@ -167,28 +166,13 @@ if __name__ == "__main__":
     clearml_poc.clearml_init()
     assert torch.cuda.is_available(), "no gpu available"
     args: Arguments = Arguments()
-    # llm = llm_interface.LLMInterface(args.llm_id, interested_layers=[args.llm_hidden_layer])
-    # llm_hidden_layer = args.llm_hidden_layer
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     similarity_model = ContrastiveMLP(*args.contrastive_mlp_sizes).to(device)
     classifier_model = Detector(args.contrastive_mlp_sizes[-1]).to(device)
     optimizer = torch.optim.Adam(list(similarity_model.parameters()) + list(classifier_model.parameters()), lr=args.lr)
-    similarity_criterion = ContrastiveLoss()
+    similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn)
     classifier_criterion = torch.nn.CrossEntropyLoss()
 
     main()
-
-# For today:
-# 1. Pytorch dataset
-# 2. Basic implementation of the model
-# 3. Usage of MLP
-# 4. Training the model
-# 5. Args file
-
-# For tomorrow:
-# entrying last token and token before word
-# usgae of all examples of contrastive loss - pair wise, triplet wise, etc
-# using LoRA to train model instead of MLP
-# optuna for hyperparameter tuning

@@ -10,4 +10,5 @@ class Arguments:
     noise: str = "dropout"
     dropout: float = 0.1
     epochs: int = 100
+    loss_fn: str = "triplet_loss"
 

@@ -5,7 +5,7 @@ import torch
 import entity_classifier
 
 
-def yield_dataset(good_types, bad_types, require_even_length=False) -> tuple[torch.Tensor]:
+def yield_dataset(good_types, bad_types, require_even_length=False, batch_size:int=200) -> tuple[torch.Tensor]:
     extract = lambda x: extract_entities_from_es_response(x)
 
     for good_sentences, bad_sentences in zip(
@@ -35,7 +35,7 @@ def yield_dataset(good_types, bad_types, require_even_length=False) -> tuple[tor
             yield good_sentences[start:end], bad_sentences[start:end]
 
 
-def yield_train_dataset() -> tuple[torch.Tensor]:
+def yield_train_dataset(batch_size: int = 200) -> tuple[torch.Tensor]:
     good_types = [
         "language",
         "athlete",
@@ -52,10 +52,10 @@ def yield_train_dataset() -> tuple[torch.Tensor]:
         "island"
     ]
 
-    return yield_dataset(good_types, bad_types)
+    return yield_dataset(good_types, bad_types, batch_size)
 
 
-def yield_test_dataset() -> tuple[torch.Tensor]:
+def yield_test_dataset(batch_size: int = 200) -> tuple[torch.Tensor]:
     good_types = [
         "weapon",
         "park",
@@ -69,7 +69,7 @@ def yield_test_dataset() -> tuple[torch.Tensor]:
         "soldier",
         "medical"
     ]
-    return yield_dataset(good_types, bad_types)
+    return yield_dataset(good_types, bad_types, batch_size)
 
 
 def extract_entities_from_es_response(response):

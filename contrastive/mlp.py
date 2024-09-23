@@ -1,11 +1,11 @@
 import torch
 
 class ContrastiveMLP(torch.nn.Module):
-    def __init__(self, input_size, hidden_size, output_size,
-                 activation="relu",
-                 noise="dropout",
-                 dropout=0.1):
+    def __init__(self, args: Arguments):
         super(ContrastiveMLP, self).__init__()
+        input_size, hidden_size, output_size = args.contrastive_mlp_sizes
+        activation = args.activation
+        noise = args.noise
         self.gate = torch.nn.Parameter(torch.ones(input_size))
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.fc2 = torch.nn.Linear(hidden_size, output_size)

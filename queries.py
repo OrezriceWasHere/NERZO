@@ -107,7 +107,7 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str | list[str]) -> dic
     }
 
 
-def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | list[str]) -> dict:
+def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | list[str], batch_size) -> dict:
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
     return {
         "query": {
@@ -131,11 +131,11 @@ def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | lis
                 "boost_mode": "sum"
             }
         },
-        "size": 100
+        "size": batch_size
     }
 
 
-def query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type: str | list[str]) -> dict:
+def query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type: str | list[str], batch_size) -> dict:
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
     return {
         "query": {
@@ -146,15 +146,15 @@ def query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type: str | l
         "sort": [
             {"fine_type": {"order": "asc"}}
         ],
-        "size": 100
+        "size": batch_size
     }
 
 
-def query_get_by_fine_grained_fewnerd_v3(fine_grained_type: str | list[str], randomized=True) -> dict:
+def query_get_by_fine_grained_fewnerd_v3(fine_grained_type: str | list[str], randomized=True, batch_size:int=200) -> dict:
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
     if randomized:
-        return query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type)
-    return query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type)
+        return query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type, batch_size)
+    return query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type, batch_size)
 
 
 def query_get_by_coarse_grained_fewnerd(coarse_grained_type: str) -> dict:

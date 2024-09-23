@@ -10,10 +10,7 @@ from tqdm import trange
 
 
 def main():
-    epochs = 500
-    index = 0
-    args.accumulation_steps = 1
-    for e in trange(epochs):
+    for e in trange(args.epochs):
         train(e)
         evaluate(e)
 
@@ -22,7 +19,7 @@ def avg(l):
     return sum(l) / len(l)
 
 
-def train(index):
+def train(epoch):
     similarity_model.train()
     classifier_model.train()
 
@@ -50,9 +47,9 @@ def train(index):
         bad_similarities.append(bad_similarity)
         classifier_accuracies.append(classifier_accuracy)
 
-    log_training_metrics(index, avg(losses), avg(good_similarities), avg(bad_similarities),
-                             avg(classifier_accuracies),
-                             series="train")
+    log_training_metrics(epoch, avg(losses), avg(good_similarities), avg(bad_similarities),
+                         avg(classifier_accuracies),
+                         series="train")
 
 
 def evaluate(index):

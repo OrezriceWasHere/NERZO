@@ -125,7 +125,6 @@ def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | lis
                 },
                 "boost": "5",
                 "random_score": {
-                    "seed": 12345678910,
                     "field": "_seq_no"
                 },
                 "boost_mode": "sum"

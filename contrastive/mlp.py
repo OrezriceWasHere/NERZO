@@ -1,11 +1,15 @@
 import torch
 
+from contrastive.args import Arguments
+
+
 class ContrastiveMLP(torch.nn.Module):
     def __init__(self, args: Arguments):
         super(ContrastiveMLP, self).__init__()
         input_size, hidden_size, output_size = args.contrastive_mlp_sizes
         activation = args.activation
         noise = args.noise
+        dropout = args.dropout
         self.gate = torch.nn.Parameter(torch.ones(input_size))
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.fc2 = torch.nn.Linear(hidden_size, output_size)
@@ -13,6 +17,8 @@ class ContrastiveMLP(torch.nn.Module):
 
         if activation == "silu":
             self.activation = torch.nn.SiLU()
+        elif activation == "leaky_relu":
+            self.activation = torch.nn.LeakyReLU()
         else:
             self.activation = torch.nn.ReLU()
 

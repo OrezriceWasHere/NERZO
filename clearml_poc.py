@@ -18,12 +18,11 @@ def clearml_allowed(func):
 @clearml_allowed
 def clearml_init():
     global execution_task
-    Task.add_requirements("-rrequirements.txt")
+    Task.add_requirements('requirements.txt')
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
                                task_name="hidden layers - match an entity to another sentence to detect same entity",
                                task_type=Task.TaskTypes.testing,
                                reuse_last_task_id=False)
-
     if execution_task.running_locally():
         name = input("enter description for task:\n")
         execution_task.set_name(name)
@@ -31,6 +30,9 @@ def clearml_init():
     if RUNNING_REMOTE:
         execution_task.execute_remotely(queue_name="gpu", exit_process=True)
 
+@clearml_allowed
+def clearml_connect_hyperparams(hyperparams):
+    execution_task.connect(hyperparams)
 
 @clearml_allowed
 def clearml_display_image(image, iteration, series, description):

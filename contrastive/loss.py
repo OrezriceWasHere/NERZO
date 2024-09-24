@@ -19,4 +19,4 @@ class ContrastiveLoss(torch.nn.Module):
 
 def triplet_loss(query, positive_key, negative_keys=None):
     negative_examples = negative_keys[:len(positive_key)]
-    return F.triplet_margin_with_distance_loss(query, positive_key, negative_examples, distance_function=nn.PairwiseDistance())
+    return F.triplet_margin_with_distance_loss(query, positive_key, negative_examples, distance_function=nn.PairwiseDistance(), margin=0.5)

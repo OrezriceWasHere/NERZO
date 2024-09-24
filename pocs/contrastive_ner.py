@@ -29,14 +29,12 @@ def train(epoch):
     classifier_accuracies = []
 
     for same_type, different_type in fewnerd_processor.yield_train_dataset():
-
         optimizer.zero_grad()
         good_batch, bad_batch = pick_llm_output(same_type, different_type)
 
-
         good_similarity, bad_similarity, similarity_loss = compute_similarity(
-                                                                              good_batch,
-                                                                              bad_batch).values()
+            good_batch,
+            bad_batch).values()
         classifier_accuracy, classifier_loss = compute_accuracy(good_batch, bad_batch).values()
 
         optimizer.step()
@@ -60,15 +58,14 @@ def evaluate(index):
     bad_similarities = []
     classifier_accuracies = []
 
-    for same_type, different_type in fewnerd_processor.yield_test_dataset():
-
+    for same_type, different_type in fewnerd_processor.yield_test_dataset(batch_size=args.batch_size):
         good_batch, bad_batch = pick_llm_output(same_type, different_type)
         good_batch.requires_grad = False
         bad_batch.requires_grad = False
 
         good_similarity, bad_similarity, similarity_loss = compute_similarity(
-                                                                              good_batch,
-                                                                              bad_batch).values()
+            good_batch,
+            bad_batch).values()
         classifier_accuracy, classifier_loss = compute_accuracy(good_batch, bad_batch).values()
         # similarity_loss.backward()
 
@@ -78,8 +75,8 @@ def evaluate(index):
         classifier_accuracies.append(classifier_accuracy)
 
     log_training_metrics(index, avg(losses), avg(good_similarities), avg(bad_similarities),
-                             avg(classifier_accuracies),
-                             series="eval")
+                         avg(classifier_accuracies),
+                         series="eval")
 
 
 def pick_llm_output(same_type, different_type):
@@ -113,10 +110,10 @@ def compute_accuracy(good_batch, bad_batch):
         "loss": avg(losses)
     }
 
+
 def generate_triplets(good_examples, bad_examples, amount=1) -> tuple[torch.Tensor]:
     amount = min(amount, len(good_examples))
     possible_indices = list(range(good_examples.shape[0]))
-    good_indices = random.choices(range(len(good_examples)), k=amount)
     for selected_index in random.choices(possible_indices, k=amount):
         query = good_examples[selected_index].unsqueeze(0)
         positive_examples = torch.cat((good_examples[:selected_index], good_examples[selected_index + 1:]), dim=0)
@@ -124,13 +121,9 @@ def generate_triplets(good_examples, bad_examples, amount=1) -> tuple[torch.Tens
         yield query, positive_examples, negative_examples
 
 
-
-
-
 def compute_similarity(
-                       good_batch,
-                       bad_batch):
-
+        good_batch,
+        bad_batch):
     good_similarities = []
     bad_similarities = []
     losses = []
@@ -146,7 +139,6 @@ def compute_similarity(
         losses.append(loss.item())
         good_similarities.append(F.cosine_similarity(query, positive_examples, dim=-1).mean().item())
         bad_similarities.append(F.cosine_similarity(query, negative_examples, dim=-1).mean().item())
-
 
     return {
         "good_similarity": avg(good_similarities),
@@ -166,10 +158,12 @@ if __name__ == "__main__":
     clearml_poc.clearml_init()
     assert torch.cuda.is_available(), "no gpu available"
     args: Arguments = Arguments()
+    clearml_poc.clearml_connect_hyperparams(args)
+
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    similarity_model = ContrastiveMLP(*args.contrastive_mlp_sizes).to(device)
+    similarity_model = ContrastiveMLP(args).to(device)
     classifier_model = Detector(args.contrastive_mlp_sizes[-1]).to(device)
     optimizer = torch.optim.Adam(list(similarity_model.parameters()) + list(classifier_model.parameters()), lr=args.lr)
     similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn)

@@ -1,8 +1,5 @@
 import dataset_provider
-from collections import Counter
-from random import shuffle
 import torch
-import entity_classifier
 
 
 def yield_dataset(good_types, bad_types, require_even_length=False, batch_size:int=200) -> tuple[torch.Tensor]:
@@ -35,7 +32,7 @@ def yield_dataset(good_types, bad_types, require_even_length=False, batch_size:i
             yield good_sentences[start:end], bad_sentences[start:end]
 
 
-def yield_train_dataset(batch_size: int = 200) -> tuple[torch.Tensor]:
+def yield_train_dataset(batch_size: int=200) -> tuple[torch.Tensor]:
     good_types = [
         "language",
         "athlete",

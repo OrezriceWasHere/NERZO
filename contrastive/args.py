@@ -8,6 +8,7 @@ class Arguments(TaskParameters):
     batch_size: int = 50
     instances_per_type: int = 100
 
+    triplet_loss_margin: float = 1.0
     activation: str = "relu"
     noise: str = "dropout"
     dropout: float = 0.1

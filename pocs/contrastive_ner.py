@@ -1,4 +1,3 @@
-import random
 import clearml_poc
 from contrastive.args import Arguments
 from contrastive.mlp import ContrastiveMLP, Detector
@@ -151,7 +150,7 @@ if __name__ == "__main__":
     similarity_model = ContrastiveMLP(args).to(device)
     classifier_model = Detector(args.contrastive_mlp_sizes[-1]).to(device)
     optimizer = torch.optim.Adam(list(similarity_model.parameters()) + list(classifier_model.parameters()), lr=args.lr)
-    similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn)
+    similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn, margin=args.triplet_loss_margin)
     classifier_criterion = torch.nn.CrossEntropyLoss()
 
     main()

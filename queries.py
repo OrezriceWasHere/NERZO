@@ -134,6 +134,52 @@ def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | lis
     }
 
 
+def fewnerd_random_results_per_fine_type(fine_types, instances_per_type=100):
+    query = {
+        "size": 0,
+        "aggs": {
+            "filter_types": {
+                "filter": {"terms": {"fine_type": fine_types}},
+                "aggs": {
+                    "top_artifacts": {
+                        "composite": {
+                            "sources": [
+                                {
+                                    "artifact": {
+                                        "terms": {
+                                            "field": "fine_type"
+                                        }
+                                    }
+                                }
+                            ], "size": 1
+
+                        },
+                        "aggs": {
+                            "hits": {
+                                "top_hits": {
+                                    "size": instances_per_type,
+                                    "sort": [
+                                        {
+                                            "_script": {
+                                                "type": "number",
+                                                "script": {
+                                                    "source": "Math.random()"
+                                                },
+                                                "order": "asc"
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return query
+
+
 def query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type: str | list[str], batch_size) -> dict:
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
     return {
@@ -149,7 +195,8 @@ def query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type: str | l
     }
 
 
-def query_get_by_fine_grained_fewnerd_v3(fine_grained_type: str | list[str], randomized=True, batch_size:int=200) -> dict:
+def query_get_by_fine_grained_fewnerd_v3(fine_grained_type: str | list[str], randomized=True,
+                                         batch_size: int = 200) -> dict:
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
     if randomized:
         return query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type, batch_size)

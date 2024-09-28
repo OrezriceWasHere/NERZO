@@ -1,72 +1,33 @@
 import dataset_provider
-import torch
 
 
-def yield_dataset(good_types, bad_types, require_even_length=False, batch_size:int=200) -> tuple[torch.Tensor]:
+def yield_dataset(types, batch_size=50, instances_per_type=100):
     extract = lambda x: extract_entities_from_es_response(x)
 
-    for good_sentences, bad_sentences in zip(
-            dataset_provider.yield_by_fine_grained_type_fewnerd_v3(good_types, randomize=False),
-            dataset_provider.yield_by_fine_grained_type_fewnerd_v3(bad_types, randomize=True)):
+    for result in dataset_provider.random_results_per_fine_type(types, instances_per_type):
+        result_type = result["_source"]["fine_type"]
+        good_batch = dataset_provider.get_by_fine_grained_type_fewnerd_v3(result_type,  randomize=True, batch_size=batch_size)
+        other_types = [t for t in types if t != result_type]
+        bad_batch = dataset_provider.get_by_fine_grained_type_fewnerd_v3(other_types, randomize=True, batch_size=batch_size)
 
-        good_sentences = extract(good_sentences)
-        bad_sentences = extract(bad_sentences)
-
-        max_length = min(len(good_sentences), len(bad_sentences))
-        good_sentences = good_sentences[:max_length]
-        bad_sentences = bad_sentences[:max_length]
+        yield result["_source"], extract(good_batch), extract(bad_batch)
 
 
-        # There may be a case where the good type entity switches in the middle of the batch
-        # we need to find the index where the switch happens and split the batch there
-        # so that we can have a batch with the same type and a batch with different types
-        changing_index = [i for i, (d1, d2) in enumerate(zip(good_sentences, good_sentences[1:])) if
-                          d1["fine_type"] != d2["fine_type"]]
-        changing_index = [0] + changing_index + [len(good_sentences)]
-        for start, end in zip(changing_index, changing_index[1:]):
-            if require_even_length:
-                # verify batch is of of even size
-                end = end - (end - start) % 2
-            if end - start < 2:
-                continue
-            yield good_sentences[start:end], bad_sentences[start:end]
+def yield_train_dataset(batch_size=50, instances_per_type=100):
+    types = ['education', 'airport', 'restaurant', 'sportsleague', 'disease', 'hospital', 'painting', 'other',
+             'library', 'sportsevent', 'soldier', 'game', 'educationaldegree', 'broadcastprogram', 'mountain',
+             'road/railway/highway/transit', 'company', 'politician', 'attack/battle/war/militaryconflict',
+             'astronomything', 'language', 'train', 'scholar', 'bodiesofwater', 'chemicalthing', 'director',
+             'showorganization', 'writtenart', 'disaster', 'medical', 'music', 'airplane', 'biologything', 'theater',
+             'sportsteam', 'government/governmentagency', 'livingthing', 'artist/author', 'protest', 'god']
+
+    return yield_dataset(types, batch_size, instances_per_type)
 
 
-def yield_train_dataset(batch_size: int=200) -> tuple[torch.Tensor]:
-    good_types = [
-        "language",
-        "athlete",
-        "mountain",
-        "music",
-        "company"
-    ]
-
-    bad_types = [
-        "politician",
-        "sportsteam",
-        "award",
-        "disease",
-        "island"
-    ]
-
-    return yield_dataset(good_types, bad_types, batch_size=batch_size)
-
-
-def yield_test_dataset(batch_size: int = 200) -> tuple[torch.Tensor]:
-    good_types = [
-        "weapon",
-        "park",
-        "hospital"
-        "game",
-
-    ]
-    bad_types = [
-        "ship",
-        "library",
-        "soldier",
-        "medical"
-    ]
-    return yield_dataset(good_types, bad_types, batch_size=batch_size)
+def yield_test_dataset(batch_size=50, instances_per_type=100):
+    types = ['island', 'athlete', 'politicalparty', 'actor', 'software', 'sportsfacility', 'weapon', 'food', 'election',
+             'car', 'currency', 'park', 'award', 'GPE', 'media/newspaper', 'law', 'religion', 'film', 'hotel', 'ship']
+    return yield_dataset(types, batch_size, instances_per_type)
 
 
 def extract_entities_from_es_response(response):

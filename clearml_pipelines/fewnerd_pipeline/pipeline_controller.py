@@ -25,7 +25,7 @@ def post_execute_callback_example(a_pipeline, a_node):
 pipe = PipelineController(
     packages="requirements.txt",
     name="Indexing FEWNERD Dataset into elasticsearch",
-    project="fewnerd_pipeline", version="0.0.2", add_pipeline_tags=False
+    project="fewnerd_pipeline", version="0.0.3", add_pipeline_tags=False
 )
 
 pipe.set_default_execution_queue("gpu")

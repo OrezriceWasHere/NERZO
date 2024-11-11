@@ -12,7 +12,7 @@ from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 3 index to database",
                  reuse_last_task_id=False)
 
-# task.execute_remotely()
+task.execute_remotely()
 
 hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "https://dsicscpu01:9200"
 user = os.environ.get("ELASTICSEARCH_USER") or "elastic"
@@ -93,7 +93,7 @@ for dataset in tqdm(fewnerd_dataset.datasets):
     # Process the dataset
     print(f"Processing dataset {env}")
 
-    index = f"fewnerd_v3_{env}"
+    index = f"fewnerd_v4_{env}"
 
     ensure_existing_free_index(index, mapping)
 

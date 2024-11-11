@@ -4,6 +4,7 @@ from clearml import Task, StorageManager
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
 
+from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from llm_interface import LLMInterface
 
 
@@ -58,7 +59,7 @@ def create_embedding(text, indices):
     tokens = llm.tokenize(text)
     llm_indices = llm.token_indices_given_text_indices(text, indices)
     h = llm.get_llm_at_layer(tokens, layer)[0]
-    start = h[llm_indices[0]]
+    start = h[llm_indices[0] - 1]
     end = h[llm_indices[1]]
     return start, end
 

@@ -7,6 +7,7 @@ class ContrastiveMLP(torch.nn.Module):
     def __init__(self, args: Arguments):
         super(ContrastiveMLP, self).__init__()
         input_size, hidden_size, output_size = args.contrastive_mlp_sizes
+        input_size = input_size * 2 # Concatenating two inputs, start and end
         activation = args.activation
         noise = args.noise
         dropout = args.dropout

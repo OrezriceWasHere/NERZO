@@ -2,7 +2,7 @@ from clearml.task_parameters import TaskParameters
 
 
 class Arguments(TaskParameters):
-    lr: float = 5e-6
+    lr: float = 0.005
 
     contrastive_mlp_sizes: list[int] = [1024, 4096, 100]
     batch_size: int = 50

@@ -19,7 +19,6 @@ def avg(l):
 
 
 def train(epoch):
-    similarity_model.train()
     classifier_model.train()
 
     losses = []
@@ -49,7 +48,6 @@ def train(epoch):
 
 
 def evaluate(epoch):
-    similarity_model.eval()
     classifier_model.eval()
 
     losses = []
@@ -85,10 +83,10 @@ def pick_llm_output(*items):
 
 
 def compute_accuracy(anchor, good_batch, bad_batch):
-    with torch.no_grad():
-        anchor_forward = similarity_model(anchor).clone().detach()
-        good_batch_forward = similarity_model(good_batch).clone().detach()
-        bad_batch_forward = similarity_model(bad_batch).clone().detach()
+
+    anchor_forward = anchor
+    good_batch_forward = good_batch
+    bad_batch_forward = bad_batch
 
     accuracies, losses = [], []
     labels = torch.tensor([1] * len(good_batch_forward) + [0] * len(bad_batch_forward)).to(device)
@@ -113,15 +111,8 @@ def compute_similarity(
         negative_examples):
     good_similarities = []
     bad_similarities = []
-    losses = []
+    losses = [1]
 
-    anchor = similarity_model(anchor)
-    positive_examples = similarity_model(positive_examples)
-    negative_examples = similarity_model(negative_examples)
-    loss = similarity_criterion(anchor, positive_examples, negative_examples)
-    loss.backward()
-
-    losses.append(loss.item())
     good_similarities.append(F.cosine_similarity(anchor, positive_examples, dim=-1).mean().item())
     bad_similarities.append(F.cosine_similarity(anchor, negative_examples, dim=-1).mean().item())
 
@@ -147,10 +138,8 @@ if __name__ == "__main__":
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    similarity_model = ContrastiveMLP(args).to(device)
-    classifier_model = Detector(args.contrastive_mlp_sizes[-1]).to(device)
-    optimizer = torch.optim.Adam(list(similarity_model.parameters()) + list(classifier_model.parameters()), lr=args.lr)
-    similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn, margin=args.triplet_loss_margin)
+    classifier_model = Detector().to(device)
+    optimizer = torch.optim.Adam(classifier_model.parameters(), lr=args.lr)
     classifier_criterion = torch.nn.CrossEntropyLoss()
 
     main()

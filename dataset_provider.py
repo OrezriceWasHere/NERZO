@@ -11,6 +11,7 @@ password = os.environ.get("ELASTICSEARCH_PASSWORD") or "XXX"
 
 es = Elasticsearch(hosts=hosts,
                    verify_certs=False,
+                   request_timeout=60,
                    ssl_show_warn=False,
                    basic_auth=(user, password))
 

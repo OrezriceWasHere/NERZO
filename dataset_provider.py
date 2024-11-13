@@ -66,6 +66,13 @@ def get_by_fine_grained_type_fewnerd_v3(fine_grained_type: str, batch_size, rand
     response = response.get("hits", {}).get("hits", [])
     return response
 
+def get_by_fine_grained_type_fewnerd_v4(fine_grained_type: str, batch_size, randomize=False):
+    query = queries.query_get_by_fine_grained_fewnerd_v3(fine_grained_type, randomized=randomize, batch_size=batch_size)
+    index = "fewnerd_v4_*"
+    response = search(index=index, query=query, filter_path=["hits.hits._source"])
+    response = response.get("hits", {}).get("hits", [])
+    return response
+
 
 def yield_by_fine_grained_type_fewnerd_v3(fine_grained_types: list[str], scroll: str = "3m", randomize=False, batch_size=200):
     """
@@ -92,7 +99,7 @@ def random_results_per_fine_type(fine_types, instances_per_type=100):
 
     """
     query = queries.fewnerd_random_results_per_fine_type(fine_types, instances_per_type)
-    index = "fewnerd_v3_*"
+    index = "fewnerd_v4_*"
     response = es.search(index=index, body=query)
 
     hits = response.get("aggregations", {}).get("filter_types", {}).get("top_artifacts").get("buckets", [])[0].get("hits", {}).get("hits", {}).get("hits", [])

@@ -13,5 +13,5 @@ class Arguments(TaskParameters):
     noise: str = "dropout"
     dropout: float = 0.2
     epochs: int = 200
-    loss_fn: str = "dpr_loss"
+    loss_fn: str = "triplet_loss"
 

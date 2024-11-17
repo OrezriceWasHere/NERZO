@@ -46,5 +46,5 @@ class Detector(torch.nn.Module):
         self.threshold = torch.nn.Linear(1, 2, bias=True)
 
     def forward(self, x1, x2):
-        cosine = torch.cosine_similarity(x1, x2, dim=1).unsqueeze(1)
+        cosine = torch.cosine_similarity(x1, x2, dim=1).unsqueeze(1).float()
         return self.threshold(cosine)

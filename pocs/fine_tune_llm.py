@@ -21,16 +21,15 @@ def avg(l):
 
 
 def train(epoch):
-    model.train()
-    classifier_model.train()
 
     losses = []
     good_similarities = []
     bad_similarities = []
     classifier_accuracies = []
 
+    optimizer.zero_grad()
+
     for anchor, same_type, different_type in fewnerd_processor.yield_train_dataset(batch_size=args.batch_size, instances_per_type=args.instances_per_type):
-        optimizer.zero_grad()
         anchor, good_batch, bad_batch = pick_llm_output(anchor, same_type, different_type)
 
         good_similarity, bad_similarity, similarity_loss = compute_similarity(
@@ -38,59 +37,58 @@ def train(epoch):
             good_batch,
             bad_batch).values()
         classifier_accuracy, classifier_loss = compute_accuracy(anchor, good_batch, bad_batch).values()
-        optimizer.step()
 
         losses.append(classifier_loss + similarity_loss)
         good_similarities.append(good_similarity)
         bad_similarities.append(bad_similarity)
         classifier_accuracies.append(classifier_accuracy)
 
+    optimizer.step()
     log_training_metrics(epoch, avg(losses), avg(good_similarities), avg(bad_similarities),
                          avg(classifier_accuracies),
                          series="train")
 
 
 def evaluate(epoch):
-    model.eval()
-    classifier_model.eval()
+    with torch.no_grad():
+        losses = []
+        good_similarities = []
+        bad_similarities = []
+        classifier_accuracies = []
 
-    losses = []
-    good_similarities = []
-    bad_similarities = []
-    classifier_accuracies = []
+        for anchor, same_type, different_type in fewnerd_processor.yield_test_dataset(batch_size=args.batch_size, instances_per_type=args.instances_per_type):
+            anchor, good_batch, bad_batch = pick_llm_output(anchor, same_type, different_type)
 
-    for anchor, same_type, different_type in fewnerd_processor.yield_test_dataset(batch_size=args.batch_size, instances_per_type=args.instances_per_type):
-        anchor, good_batch, bad_batch = pick_llm_output(anchor, same_type, different_type)
+            good_similarity, bad_similarity, similarity_loss = compute_similarity(
+                anchor,
+                good_batch,
+                bad_batch).values()
+            classifier_accuracy, classifier_loss = compute_accuracy(anchor, good_batch, bad_batch).values()
 
-        good_similarity, bad_similarity, similarity_loss = compute_similarity(
-            anchor,
-            good_batch,
-            bad_batch).values()
-        classifier_accuracy, classifier_loss = compute_accuracy(anchor, good_batch, bad_batch).values()
+            losses.append(classifier_loss + similarity_loss)
+            good_similarities.append(good_similarity)
+            bad_similarities.append(bad_similarity)
+            classifier_accuracies.append(classifier_accuracy)
 
-        losses.append(classifier_loss + similarity_loss)
-        good_similarities.append(good_similarity)
-        bad_similarities.append(bad_similarity)
-        classifier_accuracies.append(classifier_accuracy)
+        log_training_metrics(epoch, avg(losses), avg(good_similarities), avg(bad_similarities),
+                             avg(classifier_accuracies),
+                             series="eval")
 
-    log_training_metrics(epoch, avg(losses), avg(good_similarities), avg(bad_similarities),
-                         avg(classifier_accuracies),
-                         series="eval")
-
-def forward_pass(dataset_document):
-    text = dataset_document["all_text"]
-    text_indices = dataset_document["index_start"], dataset_document["index_end"]
-    tokens = llm.tokenize(text)
-    h = llm.get_llm_at_layer(tokens, layer, clone=False)[0]
-    token_indices = llm.token_indices_given_text_indices(text, text_indices)
-    end = h[token_indices[1]]
+def forward_pass(dataset_document: dict | list[dict]) -> list[torch.Tensor]:
+    if isinstance(dataset_document, dict):
+        dataset_document = [dataset_document]
+    texts = [doc["all_text"] for doc in dataset_document]
+    texts_indices = [(doc["index_start"], doc["index_end"]) for doc in dataset_document]
+    tokens = llm.tokenize(texts)
+    hidden_items = llm.get_llm_at_layer(tokens, layer, clone=False)
+    token_indices = [llm.token_indices_given_text_indices(text, text_indices) for text, text_indices in zip(texts, texts_indices)]
+    end = [h[token_index[1]] for h, token_index in zip(hidden_items, token_indices)]
     return end
 
 
 def pick_llm_output(*items):
     tensorify = lambda item: forward_pass(item)
-    stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch, list) else tensorify(
-        batch).unsqueeze(0)
+    stack = lambda batch: torch.stack(tensorify(batch))
 
     return list(map(stack, items))
 
@@ -154,20 +152,31 @@ if __name__ == "__main__":
     clearml_poc.clearml_connect_hyperparams(args)
 
     LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
-    llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "model.layers.17.self_attn.v_proj"
+    llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "base_model.model.model.layers.17.self_attn.v_proj"
     # Configure LoRA
     lora_config = LoraConfig(
         r=8,  # Rank of the LoRA matrices
+        target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
         lora_alpha=16,  # Scaling factor
         lora_dropout=0.1,  # Dropout probability
-        peft_type=PeftType.LORA
+        peft_type=PeftType.LORA,
+
     )
 
 
-    llm = llm_interface.LLMInterface(llm_id=llm_id, interested_layers=[layer])
+    llm = llm_interface.LLMInterface(llm_id=llm_id, interested_layers=[layer], lora_config=lora_config)
     model = llm.model
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    # Make sure only LoRA parameters are trainable
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Enable gradient computation for LoRA-specific parameters
+    for name, param in model.named_parameters():
+        if "lora" in name:  # Adjust to your naming scheme
+            param.requires_grad = True
+
+    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
     similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn, margin=args.triplet_loss_margin)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     classifier_model = Detector().to(device)

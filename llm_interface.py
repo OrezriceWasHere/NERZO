@@ -68,7 +68,9 @@ def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None, lora_config=
                                                           device_map="auto",
                                                           quantization_config=nf4_config
                                                           ))
-    model.model.layers = model.model.layers[:18]
+
+    del model.model.layers[18:]
+    torch.cuda.empty_cache()
 
     model = model.eval()
 

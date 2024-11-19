@@ -42,7 +42,7 @@ class ContrastiveMLP(torch.nn.Module):
 
 class Detector(torch.nn.Module):
 
-    def __init__(self, input_dim):
+    def __init__(self):
         super(Detector, self).__init__()
         self.threshold = torch.nn.Linear(1, 2, bias=True)
 

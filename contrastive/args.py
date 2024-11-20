@@ -4,14 +4,14 @@ from clearml.task_parameters import TaskParameters
 class Arguments(TaskParameters):
     lr: float = 5e-6
 
-    contrastive_mlp_sizes: list[int] = [1024, 4096, 100]
-    batch_size: int = 50
+    contrastive_mlp_sizes: list[int] = [1024, 50, 100]
+    batch_size: int = 5
     instances_per_type: int = 100
 
-    triplet_loss_margin: float = 1.0
-    activation: str = "relu"
+    triplet_loss_margin: float = 0.5
+    activation: str = "silu"
     noise: str = "dropout"
-    dropout: float = 0.1
+    dropout: float = 0.2
     epochs: int = 200
-    loss_fn: str = "triplet_loss"
+    loss_fn: str = "dpr_loss"
 

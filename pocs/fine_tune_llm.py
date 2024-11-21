@@ -178,7 +178,7 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
     similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn, margin=args.triplet_loss_margin)
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     classifier_model = Detector().to(device)
     classifier_criterion = torch.nn.CrossEntropyLoss()
 

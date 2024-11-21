@@ -28,7 +28,7 @@ def clearml_init():
         execution_task.set_name(name)
 
     if RUNNING_REMOTE:
-        execution_task.execute_remotely(queue_name="gpu", exit_process=True)
+        execution_task.execute_remotely(queue_name="nlp-gpu", exit_process=True)
 
 @clearml_allowed
 def clearml_connect_hyperparams(hyperparams):

@@ -1,3 +1,6 @@
+import numpy as np
+import pandas as pd
+
 import clearml_poc
 from contrastive.args import Arguments
 from contrastive.mlp import ContrastiveMLP, Detector
@@ -6,6 +9,7 @@ import torch
 from contrastive import fewnerd_processor
 import torch.nn.functional as F
 from tqdm import trange
+from sklearn.metrics import accuracy_score
 
 
 def main():
@@ -48,6 +52,16 @@ def train(epoch):
                          series="train")
 
 
+def compute_accuracy_at_prediction(predictions: list[float], ground_truths:list[int]) -> pd.DataFrame:
+    p_numpy = np.asarray(predictions)
+    gt_numpy = np.asarray(ground_truths)
+    accuracies = [accuracy_score(gt_numpy, p_numpy >= prediction) for prediction, ground_truth in zip(predictions, ground_truths)]
+    return pd.DataFrame({"prediction": p_numpy,
+                          "ground_truth": gt_numpy,
+                         "accuracy_if_threshold_was_here": np.asarray(accuracies)})
+
+
+
 def evaluate(epoch):
     similarity_model.eval()
     classifier_model.eval()
@@ -56,6 +70,8 @@ def evaluate(epoch):
     good_similarities = []
     bad_similarities = []
     classifier_accuracies = []
+    predictions = []
+    ground_truth = []
 
     for anchor, same_type, different_type in fewnerd_processor.yield_test_dataset(batch_size=args.batch_size, instances_per_type=args.instances_per_type):
         anchor, good_batch, bad_batch = pick_llm_output(anchor, same_type, different_type)
@@ -71,9 +87,22 @@ def evaluate(epoch):
         bad_similarities.append(bad_similarity)
         classifier_accuracies.append(classifier_accuracy)
 
+
+        predictions.extend(torch.cosine_similarity(anchor, good_batch, dim=1).cpu().tolist())
+        predictions.extend(torch.cosine_similarity(anchor, bad_batch, dim=1).cpu().tolist())
+
+        ground_truth.extend([1] * len(good_batch))
+        ground_truth.extend([0] * len(bad_batch))
+
+    accuracy_at_prediction = compute_accuracy_at_prediction(predictions, ground_truth)
+    best_accuracy = accuracy_at_prediction["accuracy_if_threshold_was_here"].max()
+
+
     log_training_metrics(epoch, avg(losses), avg(good_similarities), avg(bad_similarities),
                          avg(classifier_accuracies),
-                         series="eval")
+                         series="eval",
+                         accuracy_at_prediction=compute_accuracy_at_prediction(predictions, ground_truth),
+                         best_accuracy=best_accuracy)
 
 
 def pick_llm_output(*items):
@@ -132,11 +161,15 @@ def compute_similarity(
     }
 
 
-def log_training_metrics(index, similarity_loss, good_similarity, bad_similarity, accuracy, series):
+def log_training_metrics(index, similarity_loss, good_similarity, bad_similarity, accuracy, series, **kwargs):
     clearml_poc.add_point_to_graph(title="similarity_loss", series=series, x=index, y=similarity_loss)
     clearml_poc.add_point_to_graph(title="good_similarity", series=series, x=index, y=good_similarity)
     clearml_poc.add_point_to_graph(title="bad_similarity", series=series, x=index, y=bad_similarity)
     clearml_poc.add_point_to_graph(title="accuracy", series=series, x=index, y=accuracy)
+    if "accuracy_at_prediction" in kwargs:
+        clearml_poc.add_table(title="accuracy at prediction", series=series, iteration=index, table=kwargs["accuracy_at_prediction"])
+    if "best_accuracy" in kwargs:
+        clearml_poc.add_point_to_graph(title="best_accuracy", series=series, x=index, y=kwargs["best_accuracy"])
 
 
 if __name__ == "__main__":

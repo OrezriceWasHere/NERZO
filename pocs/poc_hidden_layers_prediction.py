@@ -22,12 +22,13 @@ def get_sentences_and_entities(fine_entity: str):
     same_type, different_type = [], []
     for sentence in sentences_with_entity:
         sentence_text = sentence["_source"]["full_text"]
-        entities_of_fine_type = entity_classifier.pick_entities_of_finetype_fewnerd(sentence["_source"]["tagging"], fine_entity)
+        entities_of_fine_type = entity_classifier.pick_entities_of_finetype_fewnerd(sentence["_source"]["tagging"],
+                                                                                    fine_entity)
 
         for entity in sentence["_source"]["tagging"]:
             entity_info = {"text": sentence_text,
                            "index_start": entity["index_start"],
-                            "index_end": entity["index_end"],
+                           "index_end": entity["index_end"],
                            "phrase": entity["phrase"].strip(),
                            "id": entity["text_id"]}
             if entity in entities_of_fine_type:
@@ -93,7 +94,6 @@ def predict_word_match(entity, match):
     start2, end2 = llm.tokens_indices_part_of_sentence(match["text"], match["phrase"])
     cosine_similarities = compute_word_similarity(entity, match)
     return cosine_similarities[:, end2]
-
 
 
 predictions, ground_truth = [], []
@@ -174,9 +174,10 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
         keys = list(llm.extractable_parts.keys())
         item_to_group = group_layers.map_item_to_group(list(keys))
         group_to_item = group_layers.group_layers(item_to_group)
-        group_to_indices = {group_id: [keys.index(item) for item in group if item in keys] for group_id, group in group_to_item.items()}
-        group_lcp_meanings = {group_id: find_longest_common_prefix([keys[item] for item in group_to_indices[group_id]]) for group_id in group_to_item.keys()}
-
+        group_to_indices = {group_id: [keys.index(item) for item in group if item in keys] for group_id, group in
+                            group_to_item.items()}
+        group_lcp_meanings = {group_id: find_longest_common_prefix([keys[item] for item in group_to_indices[group_id]])
+                              for group_id in group_to_item.keys()}
 
     ground_truth.append([1 for _ in range(len(keys))])
     ground_truth.append([0 for _ in range(len(keys))])
@@ -187,7 +188,8 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
     x = np.asarray(predictions).transpose()
     y = np.asarray(ground_truth).transpose()
 
-    optimal_threshold = np.asarray([find_optimal_threshold(x[key].flatten(), y[key].flatten()) for key in range(len(keys))])
+    optimal_threshold = np.asarray(
+        [find_optimal_threshold(x[key].flatten(), y[key].flatten()) for key in range(len(keys))])
     optimal_threshold_seperator = optimal_threshold[:, np.newaxis]
     accuracy = np.sum(((x >= optimal_threshold_seperator) == y), axis=1) / x.shape[1]
 
@@ -205,12 +207,10 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
             table=df
         )
 
-
-
         item_to_group_df = pd.DataFrame(
             data={"item": list(item_to_group.keys()),
-                    "group": list(item_to_group.values())
-                    },
+                  "group": list(item_to_group.values())
+                  },
             index=list(range(len(item_to_group)))
         )
         clearml_poc.add_table(
@@ -241,13 +241,13 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
     for group_id, group in group_to_item.items():
         group_indices = group_to_indices[group_id]
 
-        group_accuracy = np.sum(((x[group_indices] >= optimal_threshold_seperator[group_indices]) == y[group_indices]), axis=1) / x.shape[1]
+        group_accuracy = np.sum(((x[group_indices] >= optimal_threshold_seperator[group_indices]) == y[group_indices]),
+                                axis=1) / x.shape[1]
         clearml_poc.add_scatter(
             title="cosine similarity threshold with groups in mind",
             series=f'group {group_lcp_meanings[group_id]}',
             iteration=x.shape[1] / 2,
             values=group_accuracy)
-
 
 
 def find_threshold_epoch(pairs, different_type, epoch):
@@ -282,19 +282,8 @@ def main():
     LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
     llm = llm_interface.LLMInterface(LLM_ID)
 
-
-    types = [
-        "language",
-        "athlete",
-        "mountain",
-        "music",
-        "company",
-        "politician",
-        "sportsteam",
-        "award",
-        "disease",
-        "island"
-    ]
+    types = ['island', 'athlete', 'politicalparty', 'actor', 'software', 'sportsfacility', 'weapon', 'food', 'election',
+             'car', 'currency', 'park', 'award', 'GPE', 'media/newspaper', 'law', 'religion', 'film', 'hotel', 'ship']
 
     counter = 0
 

@@ -103,7 +103,7 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str | list[str]) -> dic
         "sort": [
             {"tagging.fine_type": {"order": "asc"}}
         ],
-        "size": 20
+        "size": 100
     }
 
 

@@ -11,7 +11,7 @@ class ContrastiveMLP(torch.nn.Module):
         activation = args.activation
         noise = args.noise
         dropout = args.dropout
-        self.gate = torch.nn.Parameter(torch.ones(input_size))
+        self.gate = torch.nn.Parameter(torch.ones(input_size) * 4)
         self.fc1 = torch.nn.Linear(input_size, hidden_size)
         self.fc2 = torch.nn.Linear(hidden_size, output_size)
 

@@ -13,7 +13,7 @@ import numpy as np
 
 def main():
     for e in trange(args.epochs):
-        # train(e)
+        train(e)
         evaluate(e)
 
 

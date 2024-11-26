@@ -272,21 +272,21 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
         table=threshold_df
     )
 
-    top_three_layers_of_accuracy = accuracy.argsort()[-3:][::-1]
-    for layer in top_three_layers_of_accuracy:
+    top_layers_of_accuracy = accuracy.argsort()[-5:][::-1]
+    for layer in top_layers_of_accuracy:
 
         accuracy_at_threshold = compute_accuracy_at_prediction(x[layer].flatten(), y[layer].flatten())
         clearml_poc.add_table(
             title="accuracy at threshold, layer " + str(layer),
             series="llm model",
-            iteration=epoch,
+            iteration=x.shape[1] / 2,
             table=accuracy_at_threshold)
 
         max_accuracy_at_threshold = accuracy_at_threshold["accuracy_if_threshold_was_here"].max()
         clearml_poc.add_point_to_graph(
             title="max accuracy",
             series=f'layer {layer}, {group_lcp_meanings[item_to_group[keys[layer]]]}',
-            x=epoch,
+            x=x.shape[1] / 2,
             y=max_accuracy_at_threshold)
 
     clearml_poc.add_scatter(

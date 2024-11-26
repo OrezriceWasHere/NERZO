@@ -67,7 +67,7 @@ def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None):
                                                           device_map="auto",
                                                           quantization_config=nf4_config
                                                           ))
-    model.model.layers = model.model.layers[:18]
+    # model.model.layers = model.model.layers[:18]
     model = model.eval()
 
     return model, tokenizer

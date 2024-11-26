@@ -18,6 +18,8 @@ def clearml_allowed(func):
 @clearml_allowed
 def clearml_init():
     global execution_task
+
+    Task.add_requirements('accelerate')
     Task.add_requirements('bitsandbytes')
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
                                task_name="hidden layers - match an entity to another sentence to detect same entity",

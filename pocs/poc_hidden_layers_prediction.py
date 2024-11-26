@@ -12,6 +12,8 @@ import numpy as np
 from sklearn import metrics
 import torch.nn.functional as F
 import pandas as pd
+from sklearn.metrics import accuracy_score
+
 
 llm: llm_interface.LLMInterface = None
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -134,10 +136,21 @@ def prediction_epoch(pairs, different_type, epoch):
 find_threshold_prediction, find_threshold_ground_truth = [], []
 
 
+
 def find_optimal_threshold(predictions, real_values):
-    fpr, tpr, thresholds = metrics.roc_curve(y_true=real_values, y_score=predictions)
-    optimal_idx = np.argmax(tpr - fpr)
-    optimal_threshold = thresholds[optimal_idx]
+    # Example predictions, ground truth, and thresholds
+
+
+    # Results for each threshold
+    accuracies = []
+
+    # Traverse through thresholds and update TP/FP incrementally
+    for threshold in predictions:
+        accuracies.append(accuracy_score(ground_truth, predictions >= threshold))
+
+
+    # Find the threshold that maximizes accuracy
+    optimal_threshold = predictions[np.argmax(accuracies)]
     return optimal_threshold
 
 
@@ -160,6 +173,16 @@ def find_longest_common_prefix(words):
 
     # Return the longest common prefix
     return longest_common_prefix
+
+def compute_accuracy_at_prediction(predictions: list[float], ground_truths:list[int]) -> pd.DataFrame:
+    p_numpy = np.asarray(predictions)
+    gt_numpy = np.asarray(ground_truths)
+    accuracies = [accuracy_score(gt_numpy, p_numpy >= prediction) for prediction, ground_truth in zip(predictions, ground_truths)]
+    return pd.DataFrame({"prediction": p_numpy,
+                          "ground_truth": gt_numpy,
+                         "accuracy_if_threshold_was_here": np.asarray(accuracies)})
+
+
 
 
 def find_threshold_hooked_epoch(pairs, different_type, epoch):
@@ -222,7 +245,8 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
 
     threshold_df = pd.DataFrame(
         data={"keys": keys,
-              "threshold": optimal_threshold
+              "threshold": optimal_threshold,
+              "accuracy here": accuracy
               },
         index=list(range(len(keys)))
     )
@@ -232,6 +256,24 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
         iteration=epoch,
         table=threshold_df
     )
+
+    top_layers_of_accuracy = accuracy.argsort()[-5:][::-1]
+    for layer in top_layers_of_accuracy:
+
+        accuracy_at_threshold = compute_accuracy_at_prediction(x[layer].flatten(), y[layer].flatten())
+        clearml_poc.add_table(
+            title="accuracy at threshold, layer " + str(layer),
+            series="llm model",
+            iteration=x.shape[1] / 2,
+            table=accuracy_at_threshold)
+
+        max_accuracy_at_threshold = accuracy_at_threshold["accuracy_if_threshold_was_here"].max()
+        clearml_poc.add_point_to_graph(
+            title="max accuracy",
+            series=f'layer {layer}, {group_lcp_meanings[item_to_group[keys[layer]]]}',
+            x=x.shape[1] / 2,
+            y=max_accuracy_at_threshold)
+
     clearml_poc.add_scatter(
         title="using cosine similarities to separate between same and different entities",
         series="same part of entity tag",

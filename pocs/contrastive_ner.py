@@ -13,7 +13,7 @@ import numpy as np
 
 def main():
     for e in trange(args.epochs):
-        train(e)
+        # train(e)
         evaluate(e)
 
 
@@ -87,11 +87,16 @@ def evaluate(epoch):
         classifier_accuracies.append(classifier_accuracy)
 
 
-        predictions.extend(torch.cosine_similarity(anchor, good_batch, dim=1).cpu().tolist())
-        predictions.extend(torch.cosine_similarity(anchor, bad_batch, dim=1).cpu().tolist())
+        with torch.no_grad():
+            anchor_mlp = similarity_model(anchor)
+            good_batch_mlp = similarity_model(good_batch)
+            bad_batch_mlp = similarity_model(bad_batch)
 
-        ground_truth.extend([1] * len(good_batch))
-        ground_truth.extend([0] * len(bad_batch))
+        predictions.extend(torch.cosine_similarity(anchor_mlp, good_batch_mlp, dim=1).cpu().tolist())
+        predictions.extend(torch.cosine_similarity(anchor_mlp, bad_batch_mlp, dim=1).cpu().tolist())
+
+        ground_truth.extend([1] * len(good_batch_mlp))
+        ground_truth.extend([0] * len(bad_batch_mlp))
 
     accuracy_at_prediction = compute_accuracy_at_prediction(predictions, ground_truth)
     best_accuracy = accuracy_at_prediction["accuracy_if_threshold_was_here"].max()

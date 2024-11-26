@@ -10,6 +10,8 @@ from contrastive import fewnerd_processor
 import torch.nn.functional as F
 from tqdm import trange
 from sklearn.metrics import accuracy_score
+import pandas as pd
+import numpy as np
 
 
 def main():
@@ -88,11 +90,16 @@ def evaluate(epoch):
         classifier_accuracies.append(classifier_accuracy)
 
 
-        predictions.extend(torch.cosine_similarity(anchor, good_batch, dim=1).cpu().tolist())
-        predictions.extend(torch.cosine_similarity(anchor, bad_batch, dim=1).cpu().tolist())
+        with torch.no_grad():
+            anchor_mlp = similarity_model(anchor)
+            good_batch_mlp = similarity_model(good_batch)
+            bad_batch_mlp = similarity_model(bad_batch)
 
-        ground_truth.extend([1] * len(good_batch))
-        ground_truth.extend([0] * len(bad_batch))
+        predictions.extend(torch.cosine_similarity(anchor_mlp, good_batch_mlp, dim=1).cpu().tolist())
+        predictions.extend(torch.cosine_similarity(anchor_mlp, bad_batch_mlp, dim=1).cpu().tolist())
+
+        ground_truth.extend([1] * len(good_batch_mlp))
+        ground_truth.extend([0] * len(bad_batch_mlp))
 
     accuracy_at_prediction = compute_accuracy_at_prediction(predictions, ground_truth)
     best_accuracy = accuracy_at_prediction["accuracy_if_threshold_was_here"].max()
@@ -106,9 +113,25 @@ def evaluate(epoch):
 
 
 def pick_llm_output(*items):
-    tensorify = lambda item: torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]).to(device)
-    stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch, list) else tensorify(
-        batch).unsqueeze(0)
+    if args.input_tokens == "end":
+        tensorify = lambda item: torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]).to(device)
+        stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch, list) else tensorify(
+            batch).unsqueeze(0)
+
+    elif args.input_tokens == "diff":
+        tensorify = lambda item: (torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]) - torch.tensor(
+            item["embedding"]["llama_3_17_v_proj"]["start"])).to(device)
+        stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
+                                                                                             list) else tensorify(
+            batch).unsqueeze(0)
+
+    elif args.input_tokens == "":
+        tensorify = lambda item: torch.concat((torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]),
+                                               torch.tensor(item["embedding"]["llama_3_17_v_proj"]["start"]))).to(
+            device)
+        stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
+                                                                                             list) else tensorify(
+            batch).unsqueeze(0)
 
     return list(map(stack, items))
 

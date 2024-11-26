@@ -8,6 +8,8 @@ class Arguments(TaskParameters):
     batch_size: int = 50
     instances_per_type: int = 100
 
+    input_tokens = "end"  # [possible_values: "end", "start_end_pair", "diff"]
+
     triplet_loss_margin: float = 0.5
     activation: str = "silu"
     noise: str = "dropout"

@@ -7,16 +7,17 @@ from clearml import StorageManager, Dataset
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from llm_interface import LLMInterface
 
-
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
 Task.add_requirements("-rrequirements.txt")
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 2 jsonify dataset", reuse_last_task_id=False)
 task.execute_remotely()
 
-llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "model.layers.17.self_attn.v_proj"
-db_key = "llama_3_17_v_proj"
-llm = LLMInterface(llm_id=llm_id, interested_layers=[layer])
+llm_id = "meta-llama/Meta-Llama-3.1-8B"
+interested_layers = "model.layers.17.self_attn.v_proj", "model"
+db_key = "llama_3_17_v_proj", "llama_3_entire_model"
+layers_and_keys_pairs = list(zip(interested_layers, db_key))
+llm = LLMInterface(llm_id=llm_id, interested_layers=list(interested_layers))
 
 
 def split_into_document(dataset_file):
@@ -38,17 +39,18 @@ def split_into_document(dataset_file):
             yield line_buffer
 
 
-
 def space_when_necessary(prev_word, current_word):
     space = " "
     no_space = ""
-    list_words_without_space = ["(", ")", "[", "]", "{", "}", ":", ";", ",", ".", "!", "?", "'", "\"", "`", "'s","''", "%"]
+    list_words_without_space = ["(", ")", "[", "]", "{", "}", ":", ";", ",", ".", "!", "?", "'", "\"", "`", "'s", "''",
+                                "%"]
 
     if any((not prev_word,
             not current_word,
             current_word in list_words_without_space)):
         return no_space
     return space
+
 
 def decide_word_tagging(tagging):
     if tagging == "O":
@@ -58,13 +60,20 @@ def decide_word_tagging(tagging):
 def create_embedding(text, indices):
     tokens = llm.tokenize(text)
     llm_indices = llm.token_indices_given_text_indices(text, indices)
-    h = llm.get_llm_at_layer(tokens, layer)[0]
-    start = h[llm_indices[0] - 1]
-    end = h[llm_indices[1]]
-    return start, end
+    embeddings = {}
+    for model_layer, db_name  in layers_and_keys_pairs:
+        h = llm.get_llm_at_layer(tokens, model_layer)[0]
+        start = h[llm_indices[0] - 1]
+        end = h[llm_indices[1]]
+        embeddings[db_name] = {
+                "start": start.tolist(),
+                "end": end.tolist()
+       }
+
+    return embeddings
+
 
 def process_document(document):
-
     prev_word = None
     prev_tagging = None
     full_text = ""
@@ -88,12 +97,11 @@ def process_document(document):
                 "coarse_type": coarse_tag,
                 "fine_type": fine_tag,
                 "index_start": len(full_text) + (1 if prev_word and len(word) != len(addition) else 0),
-                "index_end": len(full_text)  +  len(addition),
+                "index_end": len(full_text) + len(addition),
             })
         elif in_entity:
             tagging_array[-1]["phrase"] += addition
             tagging_array[-1]["index_end"] += len(addition)
-
 
         full_text += addition
         prev_tagging = tagging
@@ -103,13 +111,8 @@ def process_document(document):
         tagging["all_text"] = full_text
         tagging["text_id"] = text_id
         assert tagging["all_text"][tagging["index_start"]:tagging["index_end"]] == tagging["phrase"]
-        start, end = create_embedding(full_text, (tagging["index_start"], tagging["index_end"]))
-        tagging["embedding"] = {
-            db_key: {
-                "start": start.tolist(),
-                "end": end.tolist()
-            }
-        }
+        embedding = create_embedding(full_text, (tagging["index_start"], tagging["index_end"]))
+        tagging["embedding"] = embedding
 
     return tagging_array
 
@@ -137,11 +140,8 @@ for dataset in tqdm(fewnerd_dataset.datasets):
         clearml_dataset.upload()
         clearml_dataset.finalize()
 
-
     # task.upload_artifact(f'json-dataset-{dataset["env"]}',
     #                      artifact_object=file_dir)
-
-
 
 print('Notice, artifacts are uploaded in the background')
 print('Done')

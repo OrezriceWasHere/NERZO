@@ -59,6 +59,21 @@ mapping = {
                                 "index": "false"
                             }
                         }
+                    },
+                    "llama_3_entire_model": {
+                        "type": "object",
+                        "properties": {
+                            "start": {
+                                "type": "dense_vector",
+                                "dims": 4096,
+                                "index": "false"
+                            },
+                            "end": {
+                                "type": "dense_vector",
+                                "dims": 4096,
+                                "index": "false"
+                            }
+                        }
                     }
                 }
             }

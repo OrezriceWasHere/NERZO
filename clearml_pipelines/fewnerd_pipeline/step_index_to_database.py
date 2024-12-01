@@ -42,7 +42,7 @@ mapping = {
             "text_id": {
                 "type": "keyword"
             },
-            "embeddings": {
+            "embedding": {
                 "type": "object",
                 "properties": {
                     "llama_3_17_v_proj": {
@@ -71,6 +71,21 @@ mapping = {
                             "end": {
                                 "type": "dense_vector",
                                 "dims": 4096,
+                                "index": "false"
+                            }
+                        }
+                    },
+                    "llama_3_31_v_proj": {
+                        "type": "object",
+                        "properties": {
+                            "start": {
+                                "type": "dense_vector",
+                                "dims": 1024,
+                                "index": "false"
+                            },
+                            "end": {
+                                "type": "dense_vector",
+                                "dims": 1024,
                                 "index": "false"
                             }
                         }

@@ -28,7 +28,7 @@ pipe = PipelineController(
     project="fewnerd_pipeline", version="0.0.4", add_pipeline_tags=False
 )
 
-pipe.set_default_execution_queue("nlp-gpu")
+pipe.set_default_execution_queue("runai_gpu")
 
 pipe.add_step(
     name="stage_download",
@@ -64,7 +64,7 @@ pipe.add_step(
 SHOULD_DEPLOY = env.get("RUNNING_REMOTE", "no") == "yes"
 
 if SHOULD_DEPLOY:
-    pipe.start(queue='nlp-gpu')
+    pipe.start(queue='runai_gpu')
 else:
     pipe.start_locally(run_pipeline_steps_locally=True)
 

@@ -14,8 +14,8 @@ task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 2 jso
 task.execute_remotely()
 
 llm_id = "meta-llama/Meta-Llama-3.1-8B"
-interested_layers = "model.layers.17.self_attn.v_proj", "model"
-db_key = "llama_3_17_v_proj", "llama_3_entire_model"
+interested_layers = "model.layers.17.self_attn.v_proj", "model.layers.31.self_attn.v_proj", "model"
+db_key = "llama_3_17_v_proj", "llama_3_31_v_proj", "llama_3_entire_model"
 layers_and_keys_pairs = list(zip(interested_layers, db_key))
 llm = LLMInterface(llm_id=llm_id, interested_layers=list(interested_layers))
 

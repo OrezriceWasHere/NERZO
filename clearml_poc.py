@@ -33,8 +33,8 @@ def clearml_init():
         execution_task.execute_remotely(queue_name=Arguments.compute_queue, exit_process=True)
 
 @clearml_allowed
-def clearml_connect_hyperparams(hyperparams):
-    execution_task.connect(hyperparams)
+def clearml_connect_hyperparams(hyperparams, name="general"):
+    execution_task.connect(hyperparams, name=name)
 
 @clearml_allowed
 def clearml_display_image(image, iteration, series, description):

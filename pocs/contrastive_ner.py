@@ -1,6 +1,3 @@
-import numpy as np
-import pandas as pd
-
 import clearml_poc
 from contrastive.args import Arguments
 from contrastive.mlp import ContrastiveMLP, Detector
@@ -12,6 +9,9 @@ from tqdm import trange
 from sklearn.metrics import accuracy_score
 import pandas as pd
 import numpy as np
+from llm_interface import LLMInterface
+from peft import LoraConfig, PeftType
+
 
 
 def main():
@@ -89,11 +89,10 @@ def evaluate(epoch):
         bad_similarities.append(bad_similarity)
         classifier_accuracies.append(classifier_accuracy)
 
+        anchor_mlp = forward_similarity_model(anchor, compute_grad=False,detach=False)
+        good_batch_mlp = forward_similarity_model(good_batch, compute_grad=False,detach=False)
+        bad_batch_mlp = forward_similarity_model(bad_batch, compute_grad=False,detach=False)
 
-        with torch.no_grad():
-            anchor_mlp = similarity_model(anchor)
-            good_batch_mlp = similarity_model(good_batch)
-            bad_batch_mlp = similarity_model(bad_batch)
 
         predictions.extend(torch.cosine_similarity(anchor_mlp, good_batch_mlp, dim=1).cpu().tolist())
         predictions.extend(torch.cosine_similarity(anchor_mlp, bad_batch_mlp, dim=1).cpu().tolist())
@@ -112,8 +111,31 @@ def evaluate(epoch):
                          best_accuracy=best_accuracy)
 
 
+def tensorify_db_document(dataset_document: dict | list[dict]) -> list[torch.Tensor]:
+    if isinstance(dataset_document, dict):
+        dataset_document = [dataset_document]
+    texts = [doc["all_text"] for doc in dataset_document]
+    texts_indices = [(doc["index_start"], doc["index_end"]) for doc in dataset_document]
+    tokens = llm.tokenize(texts)
+    hidden_items = llm.get_llm_at_layer(tokens, layer, clone=False)
+    token_indices = [llm.token_indices_given_text_indices(text, text_indices) for text, text_indices in zip(texts, texts_indices)]
+    if args.input_tokens == "start_end_pair":
+        desired_tokens = [torch.concat((h[token_index[1]], h[token_index[0]])) for h, token_index in zip(hidden_items, token_indices)]
+    elif args.input_tokens == "end":
+        desired_tokens = [h[token_index[1]] for h, token_index in zip(hidden_items, token_indices)]
+    elif args.input_tokens == "diff":
+        desired_tokens = [h[token_index[1]] - h[token_index[0]] for h, token_index in zip(hidden_items, token_indices)]
+    else:
+        raise ValueError(f"input_tokens should be one of ['end', 'diff', 'start_end_pair'] but got {args.input_tokens}")
+    return desired_tokens
+
+
 def pick_llm_output(*items):
-    if args.input_tokens == "end":
+    if args.fine_tune_llm:
+        tensorify = lambda item: tensorify_db_document(item)
+        stack = lambda batch: torch.stack(tensorify(batch))
+
+    elif args.input_tokens == "end":
         tensorify = lambda item: torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]).to(device)
         stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch, list) else tensorify(
             batch).unsqueeze(0)
@@ -125,22 +147,39 @@ def pick_llm_output(*items):
                                                                                              list) else tensorify(
             batch).unsqueeze(0)
 
-    elif args.input_tokens == "":
+    elif args.input_tokens == "start_end_pair":
         tensorify = lambda item: torch.concat((torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]),
                                                torch.tensor(item["embedding"]["llama_3_17_v_proj"]["start"]))).to(
             device)
         stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
                                                                                              list) else tensorify(
             batch).unsqueeze(0)
+    else:
+        raise ValueError(f"input_tokens should be one of ['end', 'diff', 'start_end_pair'] but got {args.input_tokens}")
 
     return list(map(stack, items))
 
 
+def forward_similarity_model(x, compute_grad=False,detach=True):
+    if not args.fine_tune_llm:
+        if compute_grad:
+                x = similarity_model(x)
+        else:
+            with torch.no_grad():
+                    x = similarity_model(x)
+    else:
+        # when fine tuning llm, the similiraity model is the llm model
+        pass
+
+    if detach:
+        x = x.clone().detach()
+    return x
+
+
 def compute_accuracy(anchor, good_batch, bad_batch):
-    with torch.no_grad():
-        anchor_forward = similarity_model(anchor).clone().detach()
-        good_batch_forward = similarity_model(good_batch).clone().detach()
-        bad_batch_forward = similarity_model(bad_batch).clone().detach()
+    anchor_forward = forward_similarity_model(anchor, compute_grad=False,detach=True).float()
+    good_batch_forward = forward_similarity_model(good_batch, compute_grad=False,detach=True).float()
+    bad_batch_forward = forward_similarity_model(bad_batch, compute_grad=False,detach=True).float()
 
     accuracies, losses = [], []
     labels = torch.tensor([1] * len(good_batch_forward) + [0] * len(bad_batch_forward)).to(device)
@@ -167,9 +206,12 @@ def compute_similarity(
     bad_similarities = []
     losses = []
 
-    anchor = similarity_model(anchor)
-    positive_examples = similarity_model(positive_examples)
-    negative_examples = similarity_model(negative_examples)
+    # anchor = similarity_model(anchor)
+    # positive_examples = similarity_model(positive_examples)
+    # negative_examples = similarity_model(negative_examples)
+    anchor = forward_similarity_model(anchor, compute_grad=True,detach=False)
+    positive_examples = forward_similarity_model(positive_examples, compute_grad=True,detach=False)
+    negative_examples = forward_similarity_model(negative_examples, compute_grad=True,detach=False)
     loss = similarity_criterion(anchor, positive_examples, negative_examples)
     loss.backward()
 
@@ -203,10 +245,44 @@ if __name__ == "__main__":
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    similarity_model = ContrastiveMLP(args).to(device)
-    classifier_model = Detector().to(device)
-    optimizer = torch.optim.Adam(list(similarity_model.parameters()) + list(classifier_model.parameters()), lr=args.lr)
     similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn, margin=args.triplet_loss_margin)
     classifier_criterion = torch.nn.CrossEntropyLoss()
+    classifier_model = Detector().to(device)
+
+
+    if not args.fine_tune_llm:
+
+        similarity_model = ContrastiveMLP(args).to(device)
+        optimizer = torch.optim.Adam(list(similarity_model.parameters()) + list(classifier_model.parameters()),
+                                     lr=args.lr)
+
+    else:
+
+        LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
+        llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "base_model.model.model.layers.17.self_attn.v_proj"
+        # Configure LoRA
+        lora_config = LoraConfig(
+            r=2,  # Rank of the LoRA matrices
+            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+            lora_alpha=16,  # Scaling factor
+            lora_dropout=0.1,  # Dropout probability
+            peft_type=PeftType.LORA,
+        )
+        clearml_poc.clearml_connect_hyperparams(lora_config, name="lora_optim")
+
+        llm = LLMInterface(llm_id=llm_id, interested_layers=[layer], lora_config=lora_config)
+        # Make sure only LoRA parameters are trainable
+        for param in llm.model.parameters():
+            param.requires_grad = False
+
+        # Enable gradient computation for LoRA-specific parameters
+        for name, param in llm.model.named_parameters():
+            if "lora" in name:  # Adjust to your naming scheme
+                param.requires_grad = True
+
+        optimizer = torch.optim.Adam([p for p in llm.model.parameters() if p.requires_grad] + list(classifier_model.parameters()),
+                                     lr=args.lr)
+        similarity_model = llm.model
+
 
     main()

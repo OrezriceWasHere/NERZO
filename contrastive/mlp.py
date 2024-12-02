@@ -2,43 +2,61 @@ import torch
 
 from contrastive.args import Arguments
 
-
-class ContrastiveMLP(torch.nn.Module):
-    def __init__(self, args: Arguments):
-        super(ContrastiveMLP, self).__init__()
-        input_size, hidden_size, output_size = args.contrastive_mlp_sizes
-        if args.input_tokens == "start_end_pair":
-            input_size = input_size * 2
-        activation = args.activation
-        noise = args.noise
-        dropout = args.dropout
-        self.gate = torch.nn.Parameter(torch.ones(input_size))
-        self.fc1 = torch.nn.Linear(input_size, hidden_size)
-        self.fc2 = torch.nn.Linear(hidden_size, output_size)
-
-
-        if activation == "silu":
-            self.activation = torch.nn.SiLU()
-        elif activation == "leaky_relu":
-            self.activation = torch.nn.LeakyReLU()
-        else:
-            self.activation = torch.nn.ReLU()
-
-        if noise == "dropout":
-            self.noise = torch.nn.Dropout(dropout)
-        else:
-            self.noise = torch.nn.Identity()
-
-        self.net = torch.nn.Sequential(
-            self.fc1,
-            self.activation,
-            self.noise,
-            self.fc2
-        )
+class Gate(torch.nn.Module):
+    def __init__(self, size):
+        super(Gate, self).__init__()
+        self.gate = torch.nn.Parameter(torch.ones(size))
 
     def forward(self, x):
         neuron_to_enable = torch.sigmoid(self.gate)
-        x = x * neuron_to_enable
+        return x * neuron_to_enable
+
+
+class ContrastiveMLP(torch.nn.Module):
+
+    def __init__(self, args: Arguments):
+
+        super(ContrastiveMLP, self).__init__()
+        sizes = args.contrastive_mlp_sizes
+        if args.input_tokens == "start_end_pair":
+            sizes[0] = sizes[0] * 2
+
+        gate = Gate(sizes[0])
+
+        if args.activation == "silu":
+            activation = torch.nn.SiLU()
+        elif args.activation == "leaky_relu":
+            activation = torch.nn.LeakyReLU()
+        else:
+            activation = torch.nn.ReLU()
+
+        if args.noise == "dropout":
+            noise = torch.nn.Dropout(args.dropout)
+        else:
+            noise = torch.nn.Identity()
+
+        if args.is_hidden_layer:
+            assert len(sizes) == 3, "Hidden layer requires 3 sizes"
+            input_size, hidden_size, output_size = sizes
+            self.net = torch.nn.Sequential(
+                gate,
+                torch.nn.Linear(input_size, hidden_size),
+                activation,
+                noise,
+                torch.nn.Linear(hidden_size, output_size)
+            )
+
+        else:
+            assert len(sizes) == 2, "Output layer requires 2 sizes"
+            input_size, output_size = sizes
+            self.net = torch.nn.Sequential(
+                gate,
+                activation,
+                noise,
+                torch.nn.Linear(input_size, output_size)
+            )
+
+    def forward(self, x):
         return self.net(x)
 
 class Detector(torch.nn.Module):

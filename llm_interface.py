@@ -4,6 +4,7 @@ import torch
 from transformers import BitsAndBytesConfig
 from huggingface_hub import login
 from transformers import T5EncoderModel
+from peft import LoraConfig, get_peft_model, PeftType
 
 import llama3_tokenizer
 
@@ -37,7 +38,7 @@ def find(input_sentence, word):
     raise ValueError(f"Could not find {word} in {input_sentence}")
 
 
-def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None):
+def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None, lora_config=None):
     HUGGINGFACE_TOKEN = env.get("HUGGINGFACE_TOKEN")
     login(token=HUGGINGFACE_TOKEN)
 
@@ -67,8 +68,15 @@ def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None):
                                                           device_map="auto",
                                                           quantization_config=nf4_config
                                                           ))
-    model.model.layers = model.model.layers[:18]
+
+    # del model.model.layers[18:]
+    # torch.cuda.empty_cache()
+
     model = model.eval()
+
+    if lora_config:
+        model = get_peft_model(model, lora_config)
+        model = model.train()
 
     return model, tokenizer
 
@@ -77,11 +85,12 @@ class LLMInterface:
 
     def __init__(self, llm_id="meta-llama/Meta-Llama-3.1-8B",
                  interested_layers=None,
+                 lora_config=None,
                  tokenizer_llm_id=None):
         tokenizer_llm_id = tokenizer_llm_id or llm_id
 
         print(f'LLM ID: {llm_id}')
-        self.model, self.tokenizer = load_model_tokenizer(llm_id, tokenizer_llm_id)
+        self.model, self.tokenizer = load_model_tokenizer(llm_id, tokenizer_llm_id, lora_config)
 
         self.extractable_parts = {}
         self.interested_layers = interested_layers or []
@@ -203,16 +212,22 @@ class LLMInterface:
             outputs = self.model.forward(**inputs, output_hidden_states=True)
         return outputs["hidden_states"]
 
-    def get_llm_at_layer(self, inputs, layer, retain_layers_dict=False) -> torch.Tensor:
-        parts = self.get_hooked_hidden_layers(inputs)
-        h = parts[layer].clone().detach()
+    def get_llm_at_layer(self, inputs, layer, retain_layers_dict=False, clone=True) -> torch.Tensor:
+        parts = self.get_hooked_hidden_layers(inputs, no_grad=clone)
+        h = parts[layer]
+        if clone:
+            h = h.detach().clone()
         if not retain_layers_dict:
             self.extractable_parts.clear()
             parts.clear()
         return h
 
-    def get_hooked_hidden_layers(self, inputs) -> dict[str, torch.Tensor]:
-        with torch.no_grad():
+    def get_hooked_hidden_layers(self, inputs, no_grad=True) -> dict[str, torch.Tensor]:
+        if no_grad:
+            with torch.no_grad():
+                self.extractable_parts.clear()
+                _ = self.model.forward(**inputs)
+        else:
             self.extractable_parts.clear()
             _ = self.model.forward(**inputs)
         return self.extractable_parts

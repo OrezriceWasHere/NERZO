@@ -50,7 +50,7 @@ def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None, lora_config=
     )
 
     match tokenizer_llm_id:
-        case "meta-llama/Meta-Llama-3.1-8B":
+        case "meta-llama/Meta-Llama-3.1-8B" | "meta-llama/Llama-3.3-70B-Instruct":
             tokenizer = llama3_tokenizer.CustomLlama3Tokenizer(tokenizer_llm_id)
             tokenizer.tokenizer.pad_token = tokenizer.tokenizer.eos_token
         case _:

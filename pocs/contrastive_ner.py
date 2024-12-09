@@ -1,3 +1,5 @@
+import json
+
 import clearml_poc
 from contrastive.args import Arguments
 from contrastive.mlp import ContrastiveMLP, Detector
@@ -136,20 +138,20 @@ def pick_llm_output(*items):
         stack = lambda batch: torch.stack(tensorify(batch))
 
     elif args.input_tokens == "end":
-        tensorify = lambda item: torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]).to(device)
+        tensorify = lambda item: torch.tensor(item["embedding"][args.llm_layer]["end"]).to(device)
         stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch, list) else tensorify(
             batch).unsqueeze(0)
 
     elif args.input_tokens == "diff":
-        tensorify = lambda item: (torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]) - torch.tensor(
-            item["embedding"]["llama_3_17_v_proj"]["start"])).to(device)
+        tensorify = lambda item: (torch.tensor(item["embedding"][args.llm_layer]["end"]) - torch.tensor(
+            item["embedding"][args.llm_layer]["start"])).to(device)
         stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
                                                                                              list) else tensorify(
             batch).unsqueeze(0)
 
     elif args.input_tokens == "start_end_pair":
-        tensorify = lambda item: torch.concat((torch.tensor(item["embedding"]["llama_3_17_v_proj"]["end"]),
-                                               torch.tensor(item["embedding"]["llama_3_17_v_proj"]["start"]))).to(
+        tensorify = lambda item: torch.concat((torch.tensor(item["embedding"][args.llm_layer]["end"]),
+                                               torch.tensor(item["embedding"][args.llm_layer]["start"]))).to(
             device)
         stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
                                                                                              list) else tensorify(
@@ -242,6 +244,7 @@ if __name__ == "__main__":
     assert torch.cuda.is_available(), "no gpu available"
     args: Arguments = Arguments()
     clearml_poc.clearml_connect_hyperparams(args)
+    print('args are: ', json.dumps(args.__dict__, indent=4))
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

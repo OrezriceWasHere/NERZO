@@ -21,6 +21,7 @@ def clearml_allowed(func):
 def clearml_init():
     global execution_task
     Task.add_requirements('bitsandbytes')
+    Task.add_requirements('transformers', '>=4.45.0')
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
                                task_name="hidden layers - match an entity to another sentence to detect same entity",
                                task_type=Task.TaskTypes.optimizer,
@@ -34,7 +35,8 @@ def clearml_init():
 
 @clearml_allowed
 def clearml_connect_hyperparams(hyperparams, name="general"):
-    execution_task.connect(hyperparams, name=name)
+    if hyperparams:
+        execution_task.connect(hyperparams, name=name)
 
 @clearml_allowed
 def clearml_display_image(image, iteration, series, description):

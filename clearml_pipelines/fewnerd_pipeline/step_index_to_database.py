@@ -93,6 +93,11 @@ mapping = {
                 }
             }
         }
+    },
+    "settings": {
+        "index": {
+            "max_inner_result_window": 1000000
+        }
     }
 }
 

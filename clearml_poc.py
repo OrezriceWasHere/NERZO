@@ -2,9 +2,7 @@ from clearml import Task
 from os import environ as env
 import numpy as np
 import pandas as pd
-
-from contrastive.args import Arguments
-
+from runtime_args import RuntimeArgs
 ALLOW_CLEARML = True if env.get("ALLOW_CLEARML") == "yes" else False
 RUNNING_REMOTE = True if env.get("RUNNING_REMOTE") == "yes" else False
 
@@ -31,7 +29,7 @@ def clearml_init():
         execution_task.set_name(name)
 
     if RUNNING_REMOTE:
-        execution_task.execute_remotely(queue_name=Arguments.compute_queue, exit_process=True)
+        execution_task.execute_remotely(queue_name=RuntimeArgs.compute_queue, exit_process=True)
 
 @clearml_allowed
 def clearml_connect_hyperparams(hyperparams, name="general"):

@@ -14,6 +14,7 @@ import numpy as np
 from llm_interface import LLMInterface
 from peft import LoraConfig, PeftType
 
+from runtime_args import RuntimeArgs
 
 
 def main():
@@ -118,7 +119,7 @@ def tensorify_db_document(dataset_document: dict | list[dict]) -> list[torch.Ten
         dataset_document = [dataset_document]
     texts = [doc["all_text"] for doc in dataset_document]
     texts_indices = [(doc["index_start"], doc["index_end"]) for doc in dataset_document]
-    tokens = llm.tokenize(texts)
+    tokens = llm.tokenize(texts).to(device)
     hidden_items = llm.get_llm_at_layer(tokens, layer, clone=False)
     token_indices = [llm.token_indices_given_text_indices(text, text_indices) for text, text_indices in zip(texts, texts_indices)]
     if args.input_tokens == "start_end_pair":
@@ -262,26 +263,31 @@ if __name__ == "__main__":
     else:
 
         LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
-        llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "base_model.model.model.layers.17.self_attn.v_proj"
+        llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "model.layers.17.self_attn.v_proj"
+        if RuntimeArgs.debug_llm:
+            lora_config = None
+        else:
         # Configure LoRA
-        lora_config = LoraConfig(
-            r=2,  # Rank of the LoRA matrices
-            target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
-            lora_alpha=16,  # Scaling factor
-            lora_dropout=0.1,  # Dropout probability
-            peft_type=PeftType.LORA,
-        )
-        clearml_poc.clearml_connect_hyperparams(lora_config, name="lora_optim")
+            lora_config = LoraConfig(
+                r=2,  # Rank of the LoRA matrices
+                target_modules=["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
+                lora_alpha=16,  # Scaling factor
+                lora_dropout=0.1,  # Dropout probability
+                peft_type=PeftType.LORA,
+            )
+
+            clearml_poc.clearml_connect_hyperparams(lora_config, name="lora_optim")
 
         llm = LLMInterface(llm_id=llm_id, interested_layers=[layer], lora_config=lora_config)
         # Make sure only LoRA parameters are trainable
-        for param in llm.model.parameters():
-            param.requires_grad = False
+        if RuntimeArgs.debug_llm:
+            for param in llm.model.parameters():
+                param.requires_grad = False
 
-        # Enable gradient computation for LoRA-specific parameters
-        for name, param in llm.model.named_parameters():
-            if "lora" in name:  # Adjust to your naming scheme
-                param.requires_grad = True
+            # Enable gradient computation for LoRA-specific parameters
+            for name, param in llm.model.named_parameters():
+                if "lora" in name:  # Adjust to your naming scheme
+                    param.requires_grad = True
 
         optimizer = torch.optim.Adam([p for p in llm.model.parameters() if p.requires_grad] + list(classifier_model.parameters()),
                                      lr=args.lr)

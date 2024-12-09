@@ -7,6 +7,7 @@ from transformers import T5EncoderModel
 from peft import LoraConfig, get_peft_model, PeftType
 
 import llama3_tokenizer
+from runtime_args import RuntimeArgs
 
 
 def find(input_sentence, word):
@@ -68,9 +69,9 @@ def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None, lora_config=
                                                           device_map="auto",
                                                           quantization_config=nf4_config
                                                           ))
-
-    # del model.model.layers[18:]
-    # torch.cuda.empty_cache()
+    if RuntimeArgs.max_llm_layer:
+        del model.model.layers[RuntimeArgs.max_llm_layer:]
+        torch.cuda.empty_cache()
 
     model = model.eval()
 

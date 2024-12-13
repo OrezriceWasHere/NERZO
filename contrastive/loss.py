@@ -13,6 +13,9 @@ class ContrastiveLoss(torch.nn.Module):
         elif loss_fn == "dpr_loss":
             self.loss = dpr_loss
 
+        elif loss_fn == "contrastive_loss":
+            self.loss = contrastive_loss
+
 
         else:
             raise ValueError(f"Unknown loss function {loss_fn}")
@@ -34,3 +37,18 @@ def dpr_loss(query, positive_key, negative_keys, **kwargs):
     sum_pos_examples = __dpr_loss_criteria(query, positive_key).exp().sum()
     sum_neg_examples = __dpr_loss_criteria(query, negative_keys).exp().sum()
     return -torch.log(sum_pos_examples / (sum_pos_examples + sum_neg_examples))
+
+__contrastive_loss_criteria = lambda x, y: F.cosine_similarity(x, y, dim=-1)
+
+def contrastive_loss(x1, x2, label, margin: float = 1.0):
+    """
+    Computes Contrastive Loss
+    """
+
+    dist = __contrastive_loss_criteria(x1, x2)
+
+    loss = (1 - label) * torch.pow(dist, 2) \
+        + (label) * torch.pow(torch.clamp(margin - dist, min=0.0), 2)
+    loss = torch.mean(loss)
+
+    return loss

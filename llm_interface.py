@@ -39,7 +39,7 @@ def find(input_sentence, word):
     raise ValueError(f"Could not find {word} in {input_sentence}")
 
 
-def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None, lora_config=None):
+def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None, lora_config=None, max_llm_layer=None):
     HUGGINGFACE_TOKEN = env.get("HUGGINGFACE_TOKEN")
     login(token=HUGGINGFACE_TOKEN)
 
@@ -69,8 +69,8 @@ def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None, lora_config=
                                                           device_map="auto",
                                                           quantization_config=nf4_config
                                                           ))
-    if RuntimeArgs.max_llm_layer:
-        del model.model.layers[RuntimeArgs.max_llm_layer:]
+    if max_llm_layer:
+        del model.model.layers[max_llm_layer:]
         torch.cuda.empty_cache()
 
     model = model.eval()
@@ -87,11 +87,12 @@ class LLMInterface:
     def __init__(self, llm_id="meta-llama/Meta-Llama-3.1-8B",
                  interested_layers=None,
                  lora_config=None,
-                 tokenizer_llm_id=None):
+                 tokenizer_llm_id=None,
+                 max_llm_layer=None):
         tokenizer_llm_id = tokenizer_llm_id or llm_id
 
         print(f'LLM ID: {llm_id}')
-        self.model, self.tokenizer = load_model_tokenizer(llm_id, tokenizer_llm_id, lora_config)
+        self.model, self.tokenizer = load_model_tokenizer(llm_id, tokenizer_llm_id, lora_config, max_llm_layer=max_llm_layer)
 
         self.extractable_parts = {}
         self.interested_layers = interested_layers or []

@@ -89,6 +89,21 @@ mapping = {
                                 "index": "false"
                             }
                         }
+                    },
+                    "llama_3_3_13_k_proj": {
+                        "type": "object",
+                        "properties": {
+                            "start": {
+                                "type": "dense_vector",
+                                "dims": 1024,
+                                "index": "false"
+                            },
+                            "end": {
+                                "type": "dense_vector",
+                                "dims": 1024,
+                                "index": "false"
+                            }
+                        }
                     }
                 }
             }
@@ -96,7 +111,8 @@ mapping = {
     },
     "settings": {
         "index": {
-            "max_inner_result_window": 1000000
+            "max_inner_result_window": 1000000,
+            "default_pipeline": "id-generator"
         }
     }
 }
@@ -128,7 +144,7 @@ for dataset in tqdm(fewnerd_dataset.datasets):
     # Process the dataset
     print(f"Processing dataset {env}")
 
-    index = f"fewnerd_v4_{env}"
+    index = f"fewnerd_v5_{env}"
 
     ensure_existing_free_index(index, mapping)
 

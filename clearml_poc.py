@@ -1,15 +1,12 @@
-from clearml import Task
-from os import environ as env
+from clearml import Task, OutputModel
 import numpy as np
 import pandas as pd
 from runtime_args import RuntimeArgs
-ALLOW_CLEARML = True if env.get("ALLOW_CLEARML") == "yes" else False
-RUNNING_REMOTE = True if env.get("RUNNING_REMOTE") == "yes" else False
 
 
 def clearml_allowed(func):
     def wrapper(*args, **kwargs):
-        if ALLOW_CLEARML:
+        if RuntimeArgs.allow_clearml:
             return func(*args, **kwargs)
 
     return wrapper
@@ -17,8 +14,8 @@ def clearml_allowed(func):
 
 @clearml_allowed
 def clearml_init():
-    global execution_task
-    Task.add_requirements('bitsandbytes')
+    global execution_task, output_model
+    Task.add_requirements('bitsandbytes', '>=0.43.2')
     Task.add_requirements('transformers', '>=4.45.0')
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
                                task_name="hidden layers - match an entity to another sentence to detect same entity",
@@ -28,13 +25,17 @@ def clearml_init():
         name = input("enter description for task:\n")
         execution_task.set_name(name)
 
-    if RUNNING_REMOTE:
+    if RuntimeArgs.running_remote:
         execution_task.execute_remotely(queue_name=RuntimeArgs.compute_queue, exit_process=True)
 
 @clearml_allowed
 def clearml_connect_hyperparams(hyperparams, name="general"):
     if hyperparams:
         execution_task.connect(hyperparams, name=name)
+
+@clearml_allowed
+def get_clearml_task_id():
+    return execution_task.id
 
 @clearml_allowed
 def clearml_display_image(image, iteration, series, description):
@@ -74,3 +75,16 @@ def add_text(text):
 def add_table(title, series, iteration, table: pd.DataFrame):
     table.index.name = "id"
     execution_task.get_logger().report_table(title, series, iteration, table)
+
+@clearml_allowed
+def generate_tracked_model(**kwargs) -> OutputModel:
+    return OutputModel(task=execution_task, **kwargs)
+
+@clearml_allowed
+def upload_model_to_clearml(model: OutputModel, model_path):
+    if RuntimeArgs.upload_model:
+        model.update_weights(weights_filename=model_path)
+        execution_task.update_output_model(model_path=model_path)
+        OutputModel.wait_for_uploads()
+        print(f'uploading models from {model_path}')
+

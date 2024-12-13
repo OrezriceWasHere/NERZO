@@ -60,11 +60,15 @@ class ContrastiveMLP(torch.nn.Module):
 class Gate(torch.nn.Module):
     def __init__(self, size):
         super(Gate, self).__init__()
+        self.dimension = size
         self.gate = torch.nn.Parameter(torch.ones(size))
 
     def forward(self, x):
         neuron_to_enable = torch.sigmoid(self.gate)
         return x * neuron_to_enable
+
+    def extra_repr(self) -> str:
+        return f"dimension={self.dimension}"
 
 
 class Detector(torch.nn.Module):

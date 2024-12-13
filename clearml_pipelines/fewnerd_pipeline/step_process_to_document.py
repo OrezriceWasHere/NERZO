@@ -1,5 +1,7 @@
 import json
 from uuid import uuid4
+
+import torch
 from clearml import Task, StorageManager
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
@@ -13,12 +15,13 @@ Task.add_requirements("-rrequirements.txt")
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 2 jsonify dataset", reuse_last_task_id=False)
 task.execute_remotely()
 
-llm_id = "meta-llama/Meta-Llama-3.1-8B"
-interested_layers = "model.layers.17.self_attn.v_proj", "model.layers.31.self_attn.v_proj", "model"
-db_key = "llama_3_17_v_proj", "llama_3_31_v_proj", "llama_3_entire_model"
+llm_id = "meta-llama/Llama-3.3-70B-Instruct"
+interested_layers = ["model.layers.13.self_attn.k_proj"]
+db_key = ["llama_3_3_13_k_proj"]
 layers_and_keys_pairs = list(zip(interested_layers, db_key))
-llm = LLMInterface(llm_id=llm_id, interested_layers=list(interested_layers))
-
+llm = LLMInterface(llm_id=llm_id, interested_layers=list(interested_layers), max_llm_layer=14)
+assert  torch.cuda.is_available()
+device = torch.device("cuda")
 
 def split_into_document(dataset_file):
     pbar = tqdm()
@@ -58,7 +61,7 @@ def decide_word_tagging(tagging):
     return tagging.split("-")
 
 def create_embedding(text, indices):
-    tokens = llm.tokenize(text)
+    tokens = llm.tokenize(text).to(device)
     llm_indices = llm.token_indices_given_text_indices(text, indices)
     embeddings = {}
     for model_layer, db_name  in layers_and_keys_pairs:

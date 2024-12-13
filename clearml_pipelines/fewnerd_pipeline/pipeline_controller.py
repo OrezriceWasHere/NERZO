@@ -25,10 +25,9 @@ def post_execute_callback_example(a_pipeline, a_node):
 pipe = PipelineController(
     packages="requirements.txt",
     name="Indexing FEWNERD Dataset into elasticsearch",
-    project="fewnerd_pipeline", version="0.0.4", add_pipeline_tags=False
+    project="fewnerd_pipeline", version="0.0.6", add_pipeline_tags=False
 )
-
-pipe.set_default_execution_queue("runai_gpu")
+pipe.set_default_execution_queue('cpu')
 
 pipe.add_step(
     name="stage_download",
@@ -47,6 +46,7 @@ pipe.add_step(
     pre_execute_callback=pre_execute_callback_example,
     post_execute_callback=post_execute_callback_example,
     cache_executed_step=True,
+    execution_queue="a100_gpu",
 )
 
 pipe.add_step(
@@ -64,7 +64,7 @@ pipe.add_step(
 SHOULD_DEPLOY = env.get("RUNNING_REMOTE", "no") == "yes"
 
 if SHOULD_DEPLOY:
-    pipe.start(queue='runai_gpu')
+    pipe.start(queue='a100_gpu')
 else:
     pipe.start_locally(run_pipeline_steps_locally=True)
 

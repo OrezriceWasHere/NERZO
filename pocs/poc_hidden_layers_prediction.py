@@ -42,7 +42,7 @@ def get_sentences_and_entities(fine_entity: str):
 def compute_word_similarity(entity, match):
     global llm
 
-    tokens = llm.tokenize([entity["text"], match["text"]])
+    tokens = llm.tokenize([entity["text"], match["text"]]).to(device)
     start1, end1 = llm.tokens_indices_part_of_sentence(entity["text"], entity["phrase"])
 
     h = torch.stack(llm.get_hidden_layers(tokens)).to(device)
@@ -63,7 +63,7 @@ def compute_word_similarity(entity, match):
 def compute_word_similarity_hooked(entity, match):
     global llm
 
-    tokens = llm.tokenize([entity["text"], match["text"]])
+    tokens = llm.tokenize([entity["text"], match["text"]]).to(device)
     start1, end1 = llm.token_indices_given_text_indices(entity["text"], (entity["index_start"], entity["index_end"]))
     start2, end2 = llm.token_indices_given_text_indices(match["text"], (match["index_start"], match["index_end"]))
 
@@ -279,7 +279,7 @@ def main():
 
     assert torch.cuda.is_available(), "no gpu available"
     global llm
-    LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
+    LLM_ID = "meta-llama/Llama-3.3-70B-Instruct"
     llm = llm_interface.LLMInterface(LLM_ID)
 
     types = ['island', 'athlete', 'politicalparty', 'actor', 'software', 'sportsfacility', 'weapon', 'food', 'election',

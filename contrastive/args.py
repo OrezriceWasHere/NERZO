@@ -16,13 +16,11 @@ class Arguments:
     llm_layer: str = "llama_3_17_v_proj"
 
     input_tokens: str = "start_end_pair"  # [possible_values: "end", "start_end_pair", "diff"]
-    fine_tune_llm: bool = True
+    fine_tune_llm: bool = False
 
     triplet_loss_margin: float = 0.5
     activation: str = "silu"
     noise: str = "dropout"
-    dropout: float = 0.2
+    dropout: float = 0.1
     epochs: int = 35
-    loss_fn: str = "dpr_loss" # possible_values: "triplet_loss", "dpr_loss"
-
-    compute_queue: str = "a100_gpu"
+    loss_fn: str = "triplet_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss"

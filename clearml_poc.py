@@ -1,4 +1,4 @@
-from clearml import Task, OutputModel
+from clearml import Task, OutputModel, Model
 import numpy as np
 import pandas as pd
 from runtime_args import RuntimeArgs
@@ -32,6 +32,11 @@ def clearml_init():
 def clearml_connect_hyperparams(hyperparams, name="general"):
     if hyperparams:
         execution_task.connect(hyperparams, name=name)
+
+@clearml_allowed
+def download_model(model_id):
+    model = Model(model_id)
+    return model.get_local_copy(raise_on_error=True)
 
 @clearml_allowed
 def get_clearml_task_id():

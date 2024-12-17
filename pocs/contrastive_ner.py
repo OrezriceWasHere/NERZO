@@ -233,14 +233,7 @@ def compute_similarity(
     anchor = forward_similarity_model(anchor, compute_grad=True, detach=False)
     positive_examples = forward_similarity_model(positive_examples, compute_grad=True, detach=False)
     negative_examples = forward_similarity_model(negative_examples, compute_grad=True, detach=False)
-    if args.loss_fn != "contrastive_loss":
-        loss = similarity_criterion(anchor, positive_examples, negative_examples)
-    else:
-        positive_label = torch.tensor([1] * len(anchor)).to(device)
-        negative_label = torch.tensor([0] * len(anchor)).to(device)
-        loss_positive = similarity_criterion(anchor, positive_examples, positive_label)
-        loss_negative = similarity_criterion(anchor, negative_examples, negative_label)
-        loss = loss_positive + loss_negative
+    loss = similarity_criterion(anchor, positive_examples, negative_examples)
     loss.backward()
 
     losses.append(loss.item())

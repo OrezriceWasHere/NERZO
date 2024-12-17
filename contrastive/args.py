@@ -23,4 +23,5 @@ class Arguments:
     noise: str = "dropout"
     dropout: float = 0.1
     epochs: int = 35
-    loss_fn: str = "triplet_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss"
+    enable_gate: bool = True
+    loss_fn: str = "triplet_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss", triplet_contrastive_loss

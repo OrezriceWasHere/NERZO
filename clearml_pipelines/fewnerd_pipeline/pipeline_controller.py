@@ -64,7 +64,7 @@ pipe.add_step(
 SHOULD_DEPLOY = env.get("RUNNING_REMOTE", "no") == "yes"
 
 if SHOULD_DEPLOY:
-    pipe.start(queue='a100_gpu')
+    pipe.start(queue='cpu')
 else:
     pipe.start_locally(run_pipeline_steps_locally=True)
 

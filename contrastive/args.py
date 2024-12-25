@@ -16,7 +16,7 @@ class Arguments:
     llm_layer: str = "llama_3_17_v_proj"
 
     input_tokens: str = "start_end_pair"  # [possible_values: "end", "start_end_pair", "diff"]
-    fine_tune_llm: bool = False
+    fine_tune_llm: bool = True
 
     triplet_loss_margin: float = 0.5
     activation: str = "silu"

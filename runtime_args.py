@@ -10,8 +10,8 @@ def is_key_enabled_in_env(key):
 
 @dataclass
 class RuntimeArgs:
-    compute_queue: str = "gpu"
-    debug_llm: bool = False
+    compute_queue: str = "a100_gpu"
+    debug_llm: bool = True
     max_llm_layer: Optional[int] = None
     upload_all_predictions: bool = False
     upload_model: bool = True

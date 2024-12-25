@@ -43,6 +43,8 @@ def upload_models():
 def train(epoch):
     similarity_model.train()
     classifier_model.train()
+    if args.fine_tune_llm:
+        llm.model.train()
 
     losses = []
     good_similarities = []
@@ -85,6 +87,8 @@ def compute_accuracy_at_prediction(predictions: list[float], ground_truths: list
 def evaluate(epoch):
     similarity_model.eval()
     classifier_model.eval()
+    if args.fine_tune_llm:
+        llm.model.eval()
 
     losses = []
     good_similarities = []
@@ -186,15 +190,15 @@ def pick_llm_output(*items):
 
 
 def forward_similarity_model(x, compute_grad=False, detach=True):
-    if not args.fine_tune_llm:
-        if compute_grad:
-            x = similarity_model(x)
-        else:
-            with torch.no_grad():
-                x = similarity_model(x)
+    # if not args.fine_tune_llm:
+    if compute_grad:
+        x = similarity_model(x)
     else:
+        with torch.no_grad():
+            x = similarity_model(x)
+    # else:
         # when fine tuning llm, the similiraity model is the llm model
-        pass
+
 
     if detach:
         x = x.clone().detach()
@@ -277,9 +281,9 @@ if __name__ == "__main__":
     classifier_criterion = torch.nn.CrossEntropyLoss()
     classifier_model = Detector().to(device)
 
-    if not args.fine_tune_llm:
+    similarity_model = ContrastiveMLP(args).to(device)
 
-        similarity_model = ContrastiveMLP(args).to(device)
+    if not args.fine_tune_llm:
         optimizer = torch.optim.Adam(list(similarity_model.parameters()) + list(classifier_model.parameters()),
                                      lr=args.lr)
 
@@ -287,6 +291,7 @@ if __name__ == "__main__":
 
         LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
         llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "model.layers.17.self_attn.v_proj"
+        mlp_head_model_id_from_clearml = "04d14d8801d34445990f16d2b620660a"
         if RuntimeArgs.debug_llm:
             lora_config = None
         else:
@@ -312,9 +317,16 @@ if __name__ == "__main__":
                 if "lora" in name:  # Adjust to your naming scheme
                     param.requires_grad = True
 
+        local_mlp_head_path = clearml_poc.download_model(mlp_head_model_id_from_clearml)
+        local_mlp_head_model = torch.load(local_mlp_head_path, weights_only=True)
+        similarity_model.load_state_dict(local_mlp_head_model)
+
+
+
         optimizer = torch.optim.Adam(
-            [p for p in llm.model.parameters() if p.requires_grad] + list(classifier_model.parameters()),
+            list(similarity_model.parameters()) +
+            [p for p in llm.model.parameters() if p.requires_grad] +
+            list(classifier_model.parameters()),
             lr=args.lr)
-        similarity_model = llm.model
 
     main()

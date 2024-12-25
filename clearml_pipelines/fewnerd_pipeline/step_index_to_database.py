@@ -1,9 +1,13 @@
+import asyncio
 import os
 import hashlib
+
+import aiofiles
+import aiojson
 import ijson
 from clearml import Task, Dataset
-from elasticsearch import Elasticsearch
-from tqdm import tqdm
+from elasticsearch import Elasticsearch, AsyncElasticsearch
+from tqdm.asyncio import  tqdm
 
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 import urllib3
@@ -121,41 +125,44 @@ mapping = {
     }
 }
 
-es = Elasticsearch(hosts=hosts,
+es = AsyncElasticsearch(hosts=hosts,
                    verify_certs=False,
                     max_retries=10,
+                        request_timeout=30,
+                        retry_on_timeout=True,
                    basic_auth=(user, password))
 
 
-def ensure_existing_index(index_name, mapping):
-    if not es.indices.exists(index=index_name):
-        es.indices.create(index=index_name, body=mapping)
+async def ensure_existing_index(index_name, mapping):
+    if not await es.indices.exists(index=index_name):
+        await es.indices.create(index=index_name, body=mapping)
 
 def generate_id(item):
     keys = ["all_text", "coarse_type", "fine_type", "index_end", "index_start"]
     hash_v = hashlib.sha1(str.encode("".join([str(item[key]) for key in keys]))).hexdigest()
     return f"fnd_{hash_v}"
 
-def write_to_index(data, index):
+async def write_to_index(data, index):
     data["doc_id"] = generate_id(data)
     body = {
         "doc": data,
         "doc_as_upsert": True
     }
-    response = es.update(index=index, id=data["doc_id"], body=body)
+    response = await es.update(index=index, id=data["doc_id"], body=body)
     return response
 
 
 # Iterate over all dataset, and get artifacts
 # from step_download import datasets
 #
-# env_to_version_map = {
-#     "dev": "1.0.6",
-#     "test": "1.0.4",
-#     "train": "1.0.3"
-# }
+env_to_version_map = {
+    "dev": "1.0.6",
+    "test": "1.0.4",
+    "train": "1.0.3"
+}
 
-for dataset in tqdm(fewnerd_dataset.datasets):
+async def index_task(dataset):
+
     env = dataset["env"]
     # Load the artifact
     dataset_dir = Dataset.get(dataset_name=dataset["json"],
@@ -164,13 +171,25 @@ for dataset in tqdm(fewnerd_dataset.datasets):
 
     print(f"Processing dataset {env}")
     index = f"fewnerd_v4_{env}"
-    ensure_existing_index(index, mapping)
+    await ensure_existing_index(index, mapping)
 
     with open(os.path.join(dataset_dir, dataset["json"])) as file:
         for document in tqdm(ijson.items(file, "item")):
-            write_to_index(document, index)
+            await write_to_index(document, index)
 
 
 
 print('Notice, artifacts are uploaded in the background')
 print('Done')
+
+async def main():
+    tasks = [index_task(dataset) for dataset in fewnerd_dataset.datasets]
+    await asyncio.gather(*tasks)
+    await es.close()
+
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
+

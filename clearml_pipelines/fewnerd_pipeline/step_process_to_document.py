@@ -1,11 +1,9 @@
 import json
 from uuid import uuid4
-
 import torch
-from clearml import Task, StorageManager
+from clearml import Task
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
-
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from llm_interface import LLMInterface
 
@@ -19,7 +17,7 @@ llm_id = "meta-llama/Llama-3.3-70B-Instruct"
 interested_layers = ["model.layers.13.self_attn.k_proj"]
 db_key = ["llama_3_3_13_k_proj"]
 layers_and_keys_pairs = list(zip(interested_layers, db_key))
-llm = LLMInterface(llm_id=llm_id, interested_layers=list(interested_layers), max_llm_layer=14)
+llm = LLMInterface(llm_id=llm_id, interested_layers=list(interested_layers), max_llm_layer=19)
 assert  torch.cuda.is_available()
 device = torch.device("cuda")
 
@@ -130,18 +128,28 @@ def process_dataset(dataset_url):
     return processed_documents
 
 
-for dataset in tqdm(fewnerd_dataset.datasets):
+def main_process(dataset):
     file_dir = dataset["json"]
     with open(file_dir, "w") as file:
         processed_documents = process_dataset(dataset["url"])
+        tags = db_key + [dataset["env"]]
+        task.add_tags(tags)
 
         file.write(json.dumps(processed_documents))
         clearml_dataset = Dataset.create(dataset_name=file_dir, dataset_project="fewnerd_pipeline")
         clearml_dataset.add_files(path=file_dir)
+        clearml_dataset.add_tags(tags)
 
         # Dataset is uploaded to the ClearML Server by default
         clearml_dataset.upload()
         clearml_dataset.finalize()
+
+
+if __name__ == "__main__":
+    for dataset in fewnerd_dataset.datasets:
+        main_process(dataset)
+
+
 
     # task.upload_artifact(f'json-dataset-{dataset["env"]}',
     #                      artifact_object=file_dir)

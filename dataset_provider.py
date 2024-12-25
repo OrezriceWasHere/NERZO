@@ -1,11 +1,8 @@
 import os
-
 from elasticsearch import Elasticsearch
-from json import load
-
 import queries
 
-hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "https://dsicscpu01:9200"
+hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "http://dsicpu01:9200"
 user = os.environ.get("ELASTICSEARCH_USER") or "elastic"
 password = os.environ.get("ELASTICSEARCH_PASSWORD") or "XXX"
 
@@ -110,7 +107,7 @@ def random_results_per_fine_type(fine_types, instances_per_type=100):
     while search_after:
         print('current_type in search after', search_after)
         query["aggs"]["filter_types"]["aggs"]["top_artifacts"]["composite"]["after"] = search_after
-        response = es.search(index=index, body=query)
+        response =  es.search(index=index, body=query)
         try:
             hits = response.get("aggregations", {}).get("filter_types", {}).get("top_artifacts").get("buckets", [])[0].get(
                 "hits", {}).get("hits", {}).get("hits", [])

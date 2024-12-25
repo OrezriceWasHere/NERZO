@@ -8,9 +8,10 @@ def yield_dataset(types, batch_size=50, instances_per_type=100):
         result_type = result["_source"]["fine_type"]
         good_batch = dataset_provider.get_by_fine_grained_type_fewnerd_v4(result_type,  randomize=True, batch_size=batch_size)
         other_types = [t for t in types if t != result_type]
-        bad_batch = dataset_provider.get_by_fine_grained_type_fewnerd_v4(other_types, randomize=True, batch_size=batch_size)
+        bad_batch =  dataset_provider.get_by_fine_grained_type_fewnerd_v4(other_types, randomize=True, batch_size=batch_size)
 
         yield result["_source"], extract(good_batch), extract(bad_batch)
+
 
 
 def yield_train_dataset(batch_size=50, instances_per_type=100):

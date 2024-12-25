@@ -6,10 +6,10 @@ from clearml.automation import (
 ParameterSet,
 LogUniformParameterRange,
     UniformIntegerParameterRange)
-from clearml.automation.optuna import OptimizerOptuna  # noqa
+from clearml.automation import RandomSearch # noqa
 
 # trying to load Bayesian optimizer package
-aSearchStrategy = OptimizerOptuna
+aSearchStrategy = RandomSearch
 
 #
 # def all_optimizer_hyperparam() -> list:
@@ -58,7 +58,7 @@ args = task.connect(args)
 
 # Get the template task experiment that we want to optimize
 if not args['template_task_id']:
-    args['template_task_id'] = '70dbd00f395c4815b515398e82080382'
+    args['template_task_id'] = '843bbd05c9c0445284436410f9169525'
 
 # Set default queue name for the Training tasks themselves.
 # later can be overridden in the UI
@@ -81,21 +81,22 @@ an_optimizer = HyperParameterOptimizer(
         DiscreteParameterRange('general/lr', values=[1e-6, 5e-6, 8.8e-6, 2e-5, 7e-5, 1e-4]),
         DiscreteParameterRange('general/activation', values=['silu', 'leaky_relu', 'relu']),
         DiscreteParameterRange('general/noise', values=['dropout', 'identity']),
-        DiscreteParameterRange('general/loss_fn', values=['triplet_loss', 'dpr_loss']),
+        DiscreteParameterRange('general/loss_fn', values=['triplet_loss', 'contrastive_loss']),
+        DiscreteParameterRange('general/llm_layer', values=['llama_3_17_v_proj', 'llama_3_3_13_k_proj']),
         DiscreteParameterRange('general/input_tokens', values=['start_end_pair', 'end', 'diff']),
         DiscreteParameterRange('general/is_hidden_layer', values=[True, False]),
         DiscreteParameterRange('general/dropout', values=[0, 0.1, 0.2, 0.3, 0.4, 0.5]),
         DiscreteParameterRange('general/triplet_loss_margin', values=[0.2, 0.5, 0.65, 0.8, 0.9, 1.0]),
     ],
     # this is the objective metric we want to maximize/minimize
-    objective_metric_title='best_accuracy',
+    objective_metric_title='accuracy',
     objective_metric_series='eval',
     # now we decide if we want to maximize it or minimize it (accuracy we maximize)
-    objective_metric_sign='max',
+    objective_metric_sign='max_global',
     # let us limit the number of concurrent experiments,
     # this in turn will make sure we do dont bombard the scheduler with experiments.
     # if we have an auto-scaler connected, this, by proxy, will limit the number of machine
-    max_number_of_concurrent_tasks=8,
+    max_number_of_concurrent_tasks=10,
     # this is the optimizer class (actually doing the optimization)
     # Currently, we can choose from GridSearch, RandomSearch or OptimizerBOHB (Bayesian optimization Hyper-Band)
     # more are coming soon...
@@ -111,17 +112,17 @@ an_optimizer = HyperParameterOptimizer(
     time_limit_per_job=None,
     # Check the experiments every 12 seconds is way too often, we should probably set it to 5 min,
     # assuming a single experiment is usually hours...
-    pool_period_min=5,
+    # pool_period_min=5,
     # set the maximum number of jobs to launch for the optimization, default (None) unlimited
     # If OptimizerBOHB is used, it defined the maximum budget in terms of full jobs
     # basically the cumulative number of iterations will not exceed total_max_jobs * max_iteration_per_job
-    total_max_jobs=None,
+    total_max_jobs=40,
     # set the minimum number of iterations for an experiment, before early stopping.
     # Does not apply for simple strategies such as RandomSearch or GridSearch
     min_iteration_per_job=10,
     # Set the maximum number of iterations for an experiment to execute
     # (This is optional, unless using OptimizerBOHB where this is a must)
-    max_iteration_per_job=50,
+    max_iteration_per_job=50
 )
 
 # if we are running as a service, just enqueue ourselves into the services queue and let it run the optimization
@@ -131,7 +132,7 @@ if args['run_as_service']:
     task.execute_remotely(queue_name='cpu', exit_process=True)
 
 # report every 12 seconds, this is way too often, but we are testing here
-an_optimizer.set_report_period(0.2)
+an_optimizer.set_report_period(20)
 # start the optimization process, callback function to be called every time an experiment is completed
 # this function returns immediately
 an_optimizer.start(job_complete_callback=job_complete_callback)

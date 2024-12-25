@@ -70,6 +70,8 @@ def train(epoch):
                          avg(classifier_accuracies),
                          series="train")
 
+    del losses, good_similarities, bad_similarities, classifier_accuracies
+
 
 def compute_accuracy_at_prediction(predictions: list[float], ground_truths: list[int]) -> pd.DataFrame:
     p_numpy = np.asarray(predictions)
@@ -129,6 +131,7 @@ def evaluate(epoch):
                          series="eval",
                          accuracy_at_prediction=accuracy_at_prediction,
                          best_accuracy=best_accuracy)
+    del losses, good_similarities, bad_similarities, classifier_accuracies
 
 
 def tensorify_db_document(dataset_document: dict | list[dict]) -> list[torch.Tensor]:
@@ -150,7 +153,6 @@ def tensorify_db_document(dataset_document: dict | list[dict]) -> list[torch.Ten
     else:
         raise ValueError(f"input_tokens should be one of ['end', 'diff', 'start_end_pair'] but got {args.input_tokens}")
     return desired_tokens
-
 
 def pick_llm_output(*items):
     if args.fine_tune_llm:
@@ -220,7 +222,6 @@ def compute_accuracy(anchor, good_batch, bad_batch):
         "accuracy": avg(accuracies),
         "loss": avg(losses)
     }
-
 
 def compute_similarity(
         anchor,

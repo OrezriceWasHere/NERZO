@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -25,3 +26,10 @@ class Arguments:
     epochs: int = 35
     enable_gate: bool = True
     loss_fn: str = "triplet_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss", triplet_contrastive_loss
+
+@dataclass
+class FineTuneLLM:
+    llm_id: str = "meta-llama/Meta-Llama-3.1-8B"
+    layer: str = "base_model.model.model.layers.17.self_attn.v_proj"
+    mlp_head_model_id_from_clearml: str = "df186502700540649bfc012cb7f0a3a6"
+    max_llm_layer: Optional[int] = 18

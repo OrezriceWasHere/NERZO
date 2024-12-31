@@ -140,7 +140,7 @@ def tensorify_db_document(dataset_document: dict | list[dict]) -> list[torch.Ten
     texts = [doc["all_text"] for doc in dataset_document]
     texts_indices = [(doc["index_start"], doc["index_end"]) for doc in dataset_document]
     tokens = llm.tokenize(texts).to(device)
-    hidden_items = llm.get_llm_at_layer(tokens, layer, clone=False)
+    hidden_items = llm.get_llm_at_layer(tokens, fine_tune_llm_args.layer, clone=False)
     token_indices = [llm.token_indices_given_text_indices(text, text_indices) for text, text_indices in
                      zip(texts, texts_indices)]
     if args.input_tokens == "start_end_pair":
@@ -265,7 +265,6 @@ if __name__ == "__main__":
     assert torch.cuda.is_available(), "no gpu available"
     args: Arguments = Arguments()
     clearml_poc.clearml_connect_hyperparams(args)
-    clearml_poc.clearml_connect_hyperparams(RuntimeArgs, name="runtime_args")
     print('args are: ', json.dumps(args.__dict__, indent=4))
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -284,9 +283,8 @@ if __name__ == "__main__":
                                      lr=args.lr)
 
     else:
-
-        LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
-        llm_id, layer = "meta-llama/Meta-Llama-3.1-8B", "model.layers.17.self_attn.v_proj"
+        fine_tune_llm_args = FineTuneLLM()
+        clearml_poc.clearml_connect_hyperparams(fine_tune_llm_args, name="fine_tune_llm_args")
         if RuntimeArgs.debug_llm:
             lora_config = None
         else:
@@ -301,7 +299,10 @@ if __name__ == "__main__":
 
             clearml_poc.clearml_connect_hyperparams(lora_config, name="lora_optim")
 
-        llm = LLMInterface(llm_id=llm_id, interested_layers=[layer], lora_config=lora_config)
+        llm = LLMInterface(llm_id=fine_tune_llm_args.llm_id,
+                           interested_layers=[fine_tune_llm_args.layer],
+                           max_llm_layer=fine_tune_llm_args.max_llm_layer,
+                           lora_config=lora_config)
         # Make sure only LoRA parameters are trainable
         if RuntimeArgs.debug_llm:
             for param in llm.model.parameters():

@@ -80,13 +80,13 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str | list[str]) -> dic
                             {
                                 "script": {
                                     "script": {
-                                        "source": "doc['tagging.fine_type'].length > 1"
+                                        "source": "doc['tagging.fine_type.keyword'].length > 1"
                                     }
                                 }
                             },
                             {
                                 "terms": {
-                                    "tagging.fine_type": fine_grained_type
+                                    "tagging.fine_type.keyword": fine_grained_type
                                 }
                             }
                         ]
@@ -101,7 +101,7 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str | list[str]) -> dic
             }
         },
         "sort": [
-            {"tagging.fine_type": {"order": "asc"}}
+            {"tagging.fine_type.keyword": {"order": "asc"}}
         ],
         "size": 200
     }

@@ -58,7 +58,7 @@ args = task.connect(args)
 
 # Get the template task experiment that we want to optimize
 if not args['template_task_id']:
-    args['template_task_id'] = '843bbd05c9c0445284436410f9169525'
+    args['template_task_id'] = '5230479e79dd4f85aaa49874ae2f10ec'
 
 # Set default queue name for the Training tasks themselves.
 # later can be overridden in the UI
@@ -78,15 +78,16 @@ an_optimizer = HyperParameterOptimizer(
     hyper_parameters=[
         UniformIntegerParameterRange('general/hidden_layer', min_value=50, max_value=250, step_size=25),
         UniformIntegerParameterRange('general/output_layer', min_value=50, max_value=250, step_size=25),
-        DiscreteParameterRange('general/lr', values=[7e-06]),
-        DiscreteParameterRange('general/activation', values=['silu', 'relu']),
+        DiscreteParameterRange('general/lr', values=[5e-06]),
+        DiscreteParameterRange('general/activation', values=['silu']),
         DiscreteParameterRange('general/noise', values=['dropout', 'identity']),
         DiscreteParameterRange('general/loss_fn', values=['triplet_loss', 'contrastive_loss']),
-        DiscreteParameterRange('general/llm_layer', values=['llama_3_17_v_proj', 'llama_3_3_13_k_proj']),
-        DiscreteParameterRange('general/input_tokens', values=['start_end_pair', 'end']),
-        DiscreteParameterRange('general/is_hidden_layer', values=[True, False]),
+        DiscreteParameterRange('general/llm_layer', values=['llama_3_17_v_proj']),
+        DiscreteParameterRange('general/input_tokens', values=['start_end_pair']),
+        DiscreteParameterRange('general/is_hidden_layer', values=[False]),
         DiscreteParameterRange('general/dropout', values=[0, 0.1, 0.2, 0.3, 0.4, 0.5]),
         DiscreteParameterRange('general/triplet_loss_margin', values=[0.2, 0.5, 0.65, 0.8, 0.9, 1.0]),
+
     ],
     # this is the objective metric we want to maximize/minimize
     objective_metric_title='accuracy',
@@ -104,7 +105,7 @@ an_optimizer = HyperParameterOptimizer(
     # Select an execution queue to schedule the experiments for execution
     execution_queue=execution_queue,
     # If specified all Tasks created by the HPO process will be created under the `spawned_project` project
-    spawn_project='NER - Zero Shot Chat GPT',  # 'HPO spawn project',
+    spawn_project='Optimizer Tasks',  # 'HPO spawn project',
     # If specified only the top K performing Tasks will be kept, the others will be automatically archived
     save_top_k_tasks_only=None,  # 5,
     # Optional: Limit the execution time of a single experiment, in minutes.

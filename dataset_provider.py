@@ -10,6 +10,8 @@ es = Elasticsearch(hosts=hosts,
                    verify_certs=False,
                    request_timeout=60,
                    ssl_show_warn=False,
+                   max_retries=10000,
+                   retry_on_timeout=True,
                    basic_auth=(user, password))
 
 elastic_query = None
@@ -64,6 +66,7 @@ def get_by_fine_grained_type_fewnerd_v3(fine_grained_type: str, batch_size, rand
     response = response.get("hits", {}).get("hits", [])
     return response
 
+
 def get_by_fine_grained_type_fewnerd_v4(fine_grained_type: str, batch_size, randomize=False):
     query = queries.query_get_by_fine_grained_fewnerd_v3(fine_grained_type, randomized=randomize, batch_size=batch_size)
     index = "fewnerd_v4_*"
@@ -71,7 +74,9 @@ def get_by_fine_grained_type_fewnerd_v4(fine_grained_type: str, batch_size, rand
     response = response.get("hits", {}).get("hits", [])
     return response
 
-def yield_by_fine_grained_type_fewnerd_v3(fine_grained_types: list[str], scroll: str = "3m", randomize=False, batch_size=200):
+
+def yield_by_fine_grained_type_fewnerd_v3(fine_grained_types: list[str], scroll: str = "3m", randomize=False,
+                                          batch_size=200):
     """
     This function is used if we want to get all entites in the fine_grained_types list, using search after mechanism
     """
@@ -90,6 +95,7 @@ def yield_by_fine_grained_type_fewnerd_v3(fine_grained_types: list[str], scroll:
         hits = response.get("hits", {}).get("hits", [])
         search_after = hits[-1]["sort"] if hits else None
 
+
 def random_results_per_fine_type(fine_types, instances_per_type=100):
     """
     This function is used to get a fixed amount of entity instances, for each fine type in the fine_types list.
@@ -99,7 +105,8 @@ def random_results_per_fine_type(fine_types, instances_per_type=100):
     index = "fewnerd_v4_*"
     response = es.search(index=index, body=query)
 
-    hits = response.get("aggregations", {}).get("filter_types", {}).get("top_artifacts").get("buckets", [])[0].get("hits", {}).get("hits", {}).get("hits", [])
+    hits = response.get("aggregations", {}).get("filter_types", {}).get("top_artifacts").get("buckets", [])[0].get(
+        "hits", {}).get("hits", {}).get("hits", [])
     for hit in hits:
         yield hit
 
@@ -107,16 +114,19 @@ def random_results_per_fine_type(fine_types, instances_per_type=100):
     while search_after:
         print('current_type in search after', search_after)
         query["aggs"]["filter_types"]["aggs"]["top_artifacts"]["composite"]["after"] = search_after
-        response =  es.search(index=index, body=query)
+        response = es.search(index=index, body=query)
         try:
-            hits = response.get("aggregations", {}).get("filter_types", {}).get("top_artifacts").get("buckets", [])[0].get(
+            hits = response.get("aggregations", {}).get("filter_types", {}).get("top_artifacts").get("buckets", [])[
+                0].get(
                 "hits", {}).get("hits", {}).get("hits", [])
 
             for hit in hits:
                 yield hit
-            search_after = response.get("aggregations", {}).get("filter_types", {}).get("top_artifacts").get("after_key")
+            search_after = response.get("aggregations", {}).get("filter_types", {}).get("top_artifacts").get(
+                "after_key")
         except IndexError:
             search_after = None
+
 
 def get_by_coarse_grained_type_fewnerd(fine_grained_type: str):
     query = queries.query_get_by_coarse_grained_fewnerd(fine_grained_type)

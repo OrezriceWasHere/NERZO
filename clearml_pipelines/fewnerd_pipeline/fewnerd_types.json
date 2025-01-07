@@ -1,0 +1,254 @@
+{
+  "fine_type": [
+    {
+      "original": "GPE",
+      "refined": "GPE"
+    },
+    {
+      "original": "actor",
+      "refined": "actor"
+    },
+    {
+      "original": "airplane",
+      "refined": "airplane"
+    },
+    {
+      "original": "airport",
+      "refined": "airport"
+    },
+    {
+      "original": "artist/author",
+      "refined": "artist or author"
+    },
+    {
+      "original": "astronomything",
+      "refined": "astronomy thing"
+    },
+    {
+      "original": "athlete",
+      "refined": "athlete"
+    },
+    {
+      "original": "attack/battle/war/militaryconflict",
+      "refined": "attack or battle or war or military conflict"
+    },
+    {
+      "original": "award",
+      "refined": "award"
+    },
+    {
+      "original": "biologything",
+      "refined": "biology thing"
+    },
+    {
+      "original": "bodiesofwater",
+      "refined": "bodies of water"
+    },
+    {
+      "original": "broadcastprogram",
+      "refined": "broadcast program"
+    },
+    {
+      "original": "car",
+      "refined": "car"
+    },
+    {
+      "original": "chemicalthing",
+      "refined": "chemical thing"
+    },
+    {
+      "original": "company",
+      "refined": "company"
+    },
+    {
+      "original": "currency",
+      "refined": "currency"
+    },
+    {
+      "original": "director",
+      "refined": "director"
+    },
+    {
+      "original": "disaster",
+      "refined": "disaster"
+    },
+    {
+      "original": "disease",
+      "refined": "disease"
+    },
+    {
+      "original": "education",
+      "refined": "education"
+    },
+    {
+      "original": "educationaldegree",
+      "refined": "educational degree"
+    },
+    {
+      "original": "election",
+      "refined": "election"
+    },
+    {
+      "original": "film",
+      "refined": "film"
+    },
+    {
+      "original": "food",
+      "refined": "food"
+    },
+    {
+      "original": "game",
+      "refined": "game"
+    },
+    {
+      "original": "god",
+      "refined": "god"
+    },
+    {
+      "original": "government/governmentagency",
+      "refined": "government or government agency"
+    },
+    {
+      "original": "hospital",
+      "refined": "hospital"
+    },
+    {
+      "original": "hotel",
+      "refined": "hotel"
+    },
+    {
+      "original": "island",
+      "refined": "island"
+    },
+    {
+      "original": "language",
+      "refined": "language"
+    },
+    {
+      "original": "law",
+      "refined": "law"
+    },
+    {
+      "original": "library",
+      "refined": "library"
+    },
+    {
+      "original": "livingthing",
+      "refined": "living thing"
+    },
+    {
+      "original": "media/newspaper",
+      "refined": "media or newspaper"
+    },
+    {
+      "original": "medical",
+      "refined": "medical"
+    },
+    {
+      "original": "mountain",
+      "refined": "mountain"
+    },
+    {
+      "original": "music",
+      "refined": "music"
+    },
+    {
+      "original": "other",
+      "refined": "other"
+    },
+    {
+      "original": "painting",
+      "refined": "painting"
+    },
+    {
+      "original": "park",
+      "refined": "park"
+    },
+    {
+      "original": "politicalparty",
+      "refined": "political party"
+    },
+    {
+      "original": "politician",
+      "refined": "politician"
+    },
+    {
+      "original": "protest",
+      "refined": "protest"
+    },
+    {
+      "original": "religion",
+      "refined": "religion"
+    },
+    {
+      "original": "restaurant",
+      "refined": "restaurant"
+    },
+    {
+      "original": "road/railway/highway/transit",
+      "refined": "road or railway or highway or transit"
+    },
+    {
+      "original": "scholar",
+      "refined": "scholar"
+    },
+    {
+      "original": "ship",
+      "refined": "ship"
+    },
+    {
+      "original": "showorganization",
+      "refined": "show organization"
+    },
+    {
+      "original": "software",
+      "refined": "software"
+    },
+    {
+      "original": "soldier",
+      "refined": "soldier"
+    },
+    {
+      "original": "sportsevent",
+      "refined": "sports event"
+    },
+    {
+      "original": "sportsfacility",
+      "refined": "sports facility"
+    },
+    {
+      "original": "sportsleague",
+      "refined": "sports league"
+    },
+    {
+      "original": "sportsteam",
+      "refined": "sports team"
+    },
+    {
+      "original": "theater",
+      "refined": "theater"
+    },
+    {
+      "original": "train",
+      "refined": "train"
+    },
+    {
+      "original": "weapon",
+      "refined": "weapon"
+    },
+    {
+      "original": "writtenart",
+      "refined": "written art"
+    }
+  ],
+  "coarse_type": [
+    "location",
+    "person",
+    "organization",
+    "other",
+    "product",
+    "building",
+    "art",
+    "event"
+  ]
+}

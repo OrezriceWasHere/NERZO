@@ -2,8 +2,6 @@ import asyncio
 import os
 import hashlib
 
-import aiofiles
-import aiojson
 import ijson
 from clearml import Task, Dataset
 from elasticsearch import Elasticsearch, AsyncElasticsearch
@@ -11,6 +9,9 @@ from tqdm.asyncio import  tqdm
 
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 import urllib3
+
+from runtime_args import RuntimeArgs
+
 urllib3.disable_warnings()
 
 # Connecting ClearML with the current process,
@@ -20,9 +21,6 @@ task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 3 ind
 
 task.execute_remotely()
 
-hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "http://dsicpu01:9200"
-user = os.environ.get("ELASTICSEARCH_USER") or "elastic"
-password = os.environ.get("ELASTICSEARCH_PASSWORD") or "XXX"
 
 mapping = {
     "mappings": {
@@ -66,6 +64,12 @@ mapping = {
                                 "type": "dense_vector",
                                 "dims": 1024,
                                 "index": "false"
+                            },
+                            "ne_embedding": {
+                                "type": "dense_vector",
+                                "dims": 50,
+                                "index": "true",
+                                "similarity": "cosine"
                             }
                         }
                     },
@@ -81,6 +85,12 @@ mapping = {
                                 "type": "dense_vector",
                                 "dims": 4096,
                                 "index": "false"
+                            },
+                            "ne_embedding": {
+                                "type": "dense_vector",
+                                "dims": 50,
+                                "index": "true",
+                                "similarity": "cosine"
                             }
                         }
                     },
@@ -96,6 +106,12 @@ mapping = {
                                 "type": "dense_vector",
                                 "dims": 1024,
                                 "index": "false"
+                            },
+                            "ne_embedding": {
+                                "type": "dense_vector",
+                                "dims": 50,
+                                "index": "true",
+                                "similarity": "cosine"
                             }
                         }
                     },
@@ -111,6 +127,12 @@ mapping = {
                                 "type": "dense_vector",
                                 "dims": 1024,
                                 "index": "false"
+                            },
+                            "ne_embedding": {
+                                "type": "dense_vector",
+                                "dims": 50,
+                                "index": "true",
+                                "similarity": "cosine"
                             }
                         }
                     }
@@ -124,13 +146,6 @@ mapping = {
         }
     }
 }
-
-es = AsyncElasticsearch(hosts=hosts,
-                   verify_certs=False,
-                    max_retries=10,
-                        request_timeout=30,
-                        retry_on_timeout=True,
-                   basic_auth=(user, password))
 
 
 async def ensure_existing_index(index_name, mapping):
@@ -151,15 +166,6 @@ async def write_to_index(data, index):
     response = await es.update(index=index, id=data["doc_id"], body=body)
     return response
 
-
-# Iterate over all dataset, and get artifacts
-# from step_download import datasets
-#
-env_to_version_map = {
-    "dev": "1.0.6",
-    "test": "1.0.4",
-    "train": "1.0.3"
-}
 
 async def index_task(dataset):
 
@@ -189,6 +195,16 @@ async def main():
 
 
 if __name__ == "__main__":
+
+    runtime_args = RuntimeArgs()
+    auth = (runtime_args.elasticsearch_user, runtime_args.elasticsearch_password)
+    es = AsyncElasticsearch(hosts=runtime_args.elasticsearch_host,
+                            verify_certs=False,
+                            max_retries=10,
+                            request_timeout=30,
+                            retry_on_timeout=True,
+                            basic_auth=auth)
+
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
     loop.close()

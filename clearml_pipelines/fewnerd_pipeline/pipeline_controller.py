@@ -25,7 +25,7 @@ def post_execute_callback_example(a_pipeline, a_node):
 pipe = PipelineController(
     packages="requirements.txt",
     name="Indexing FEWNERD Dataset into elasticsearch",
-    project="fewnerd_pipeline", version="0.0.1", add_pipeline_tags=False
+    project="fewnerd_pipeline", version="0.0.2", add_pipeline_tags=False
 )
 pipe.set_default_execution_queue('cpu')
 
@@ -54,6 +54,16 @@ pipe.add_step(
     parents=["stage_process"],
     base_task_project="fewnerd_pipeline",
     base_task_name="Pipeline step 3 index to database",
+    pre_execute_callback=pre_execute_callback_example,
+    post_execute_callback=post_execute_callback_example,
+)
+
+pipe.add_step(
+    name="stage_generate_to_embedding",
+    parents=["stage_index_to_database"],
+    base_task_project="fewnerd_pipeline",
+    base_task_name="Pipeline step 4 calculate ne embedding",
+    execution_queue="a100_gpu",
     pre_execute_callback=pre_execute_callback_example,
     post_execute_callback=post_execute_callback_example,
 )

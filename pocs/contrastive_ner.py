@@ -1,7 +1,7 @@
 import json
 
 import clearml_poc
-from contrastive.args import Arguments
+from contrastive.args import Arguments, FineTuneLLM
 from contrastive.mlp import ContrastiveMLP, Detector
 from contrastive.loss import ContrastiveLoss
 import torch

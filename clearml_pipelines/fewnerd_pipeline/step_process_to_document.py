@@ -5,6 +5,7 @@ from clearml import Task
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
+from contrastive.args import FineTuneLLM, Arguments
 from llm_interface import LLMInterface
 
 # Connecting ClearML with the current process,
@@ -13,13 +14,6 @@ Task.add_requirements("-rrequirements.txt")
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 2 jsonify dataset", reuse_last_task_id=False)
 task.execute_remotely()
 
-llm_id = "meta-llama/Llama-3.3-70B-Instruct"
-interested_layers = ["model.layers.13.self_attn.k_proj"]
-db_key = ["llama_3_3_13_k_proj"]
-layers_and_keys_pairs = list(zip(interested_layers, db_key))
-llm = LLMInterface(llm_id=llm_id, interested_layers=list(interested_layers), max_llm_layer=19)
-assert  torch.cuda.is_available()
-device = torch.device("cuda")
 
 def split_into_document(dataset_file):
     pbar = tqdm()
@@ -132,7 +126,7 @@ def main_process(dataset):
     file_dir = dataset["json"]
     with open(file_dir, "w") as file:
         processed_documents = process_dataset(dataset["url"])
-        tags = db_key + [dataset["env"]]
+        tags = [db_layer_name] + [dataset["env"]]
         task.add_tags(tags)
 
         file.write(json.dumps(processed_documents))
@@ -145,7 +139,24 @@ def main_process(dataset):
         clearml_dataset.finalize()
 
 
+
 if __name__ == "__main__":
+    args = Arguments()
+    fine_tune_llm = FineTuneLLM()
+
+    task.connect(args)
+    task.connect(fine_tune_llm, name="fine_tune_llm")
+
+    model_layer_name = fine_tune_llm.layer
+    db_layer_name = args.llm_layer
+
+    layers_and_keys_pairs = list(zip([model_layer_name], [db_layer_name]))
+    llm = LLMInterface(llm_id=fine_tune_llm.llm_id,
+                       interested_layers=[db_layer_name],
+                       max_llm_layer=fine_tune_llm.max_llm_layer)
+    assert torch.cuda.is_available()
+    device = torch.device("cuda")
+
     for dataset in fewnerd_dataset.datasets:
         main_process(dataset)
 

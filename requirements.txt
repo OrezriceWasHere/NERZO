@@ -14,3 +14,4 @@ matplotlib
 pandas
 peft
 ijson
+aiohttp

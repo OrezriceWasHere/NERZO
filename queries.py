@@ -107,7 +107,7 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str | list[str]) -> dic
     }
 
 
-def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | list[str], batch_size) -> dict:
+def  query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | list[str], batch_size) -> dict:
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
     return {
         "query": {

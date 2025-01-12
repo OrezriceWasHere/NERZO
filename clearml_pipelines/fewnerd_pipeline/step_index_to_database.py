@@ -28,7 +28,8 @@ mapping = {
     "mappings": {
         "properties": {
             "all_text": {
-                "type": "text"
+                "type": "text",
+                "term_vector": "yes"
             },
             "coarse_type": {
                 "type": "keyword"
@@ -43,7 +44,8 @@ mapping = {
                 "type": "integer"
             },
             "phrase": {
-                "type": "text"
+                "type": "text",
+                "term_vector": "yes"
             },
             "text_id": {
                 "type": "keyword"

@@ -74,6 +74,23 @@ def get_by_fine_grained_type_fewnerd_v4(fine_grained_type: str, batch_size, rand
     response = response.get("hits", {}).get("hits", [])
     return response
 
+def get_hard_negative_fewnerd(fine_types: str | list[str],
+                              coarse_type: str | list[str],
+                              anchor_text:str,
+                              batch_size: int,
+                              llm_layer:str=None):
+    query = queries.query_hard_negative(
+        fine_grained_type=fine_types,
+        coarse_grained_type=coarse_type,
+        anchor_text=anchor_text,
+        size=batch_size,
+        llm_layer=llm_layer
+    )
+    index = "fewnerd_v4_*"
+    response = search(index=index, query=query, filter_path=["hits.hits._source"])
+    response = response.get("hits", {}).get("hits", [])
+    return response
+
 
 def yield_by_fine_grained_type_fewnerd_v3(fine_grained_types: list[str], scroll: str = "3m", randomize=False,
                                           batch_size=200):
@@ -126,6 +143,7 @@ def random_results_per_fine_type(fine_types, instances_per_type=100):
                 "after_key")
         except IndexError:
             search_after = None
+
 
 
 def get_by_coarse_grained_type_fewnerd(fine_grained_type: str):

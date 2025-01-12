@@ -87,6 +87,11 @@ def add_table(title, series, iteration, table: pd.DataFrame):
 def generate_tracked_model(**kwargs) -> OutputModel:
     return OutputModel(task=execution_task, **kwargs)
 
+
+@clearml_allowed
+def register_artifact(artifact, name):
+    execution_task.register_artifact(artifact=artifact, name=name)
+
 @clearml_allowed
 def upload_model_to_clearml(model: OutputModel, model_path):
     if RuntimeArgs.upload_model:

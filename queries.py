@@ -237,3 +237,54 @@ def query_get_by_coarse_grained_fewnerd(coarse_grained_type: str) -> dict:
         },
         "size": 200
     }
+
+
+def query_hard_negative(fine_grained_type: str | list[str],
+                        coarse_grained_type: str,
+                        anchor_text: str,
+                        size: int,
+                        llm_layer=None) -> dict:
+    assert isinstance(fine_grained_type, list) or isinstance(fine_grained_type,
+                                                             str), "fine_grained_type should be a string or a list of strings"
+    assert isinstance(coarse_grained_type, str), "coarse_grained_type should be a string"
+    assert isinstance(anchor_text, str), "term_to_be_closed_to should be a string"
+    fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
+    query = {
+        "query": {
+            "bool": {
+                "filter": [
+                    {
+                        "terms": {
+                            "fine_type": fine_grained_type
+                        }
+                    }
+                ],
+                "should": [
+                    {
+                        "more_like_this": {
+                            "fields": [
+                                "all_text"
+                            ],
+                            "like": anchor_text,
+                            "min_term_freq": 1,
+                            "min_doc_freq": 1
+                        }
+                    } ,
+                    {
+                        "term": {
+                            "coarse_type": coarse_grained_type
+                        }
+                    }
+                ]
+            }
+        },
+        "size": size
+    }
+    if llm_layer:
+        query["_source"] = [
+            "-embedding",
+            f"embedding.{llm_layer}.start",
+            f"embedding.{llm_layer}.end"
+        ]
+
+    return query

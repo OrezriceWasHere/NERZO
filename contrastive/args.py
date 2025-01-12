@@ -7,10 +7,10 @@ class Arguments:
     lr: float = 5e-6
 
     input_layer: int = 1024
-    hidden_layer: int = 50
-    output_layer: int = 100
+    hidden_layer: int = 100
+    output_layer: int = 50
 
-    is_hidden_layer: bool = True
+    is_hidden_layer: bool = False
     batch_size: int = 50
     instances_per_type: int = 100
 
@@ -22,7 +22,7 @@ class Arguments:
     triplet_loss_margin: float = 0.5
     activation: str = "silu"
     noise: str = "dropout"
-    dropout: float = 0.1
+    dropout: float = 0.4
     epochs: int = 35
     enable_gate: bool = True
     loss_fn: str = "triplet_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss", triplet_contrastive_loss

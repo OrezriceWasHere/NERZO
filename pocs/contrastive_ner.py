@@ -1,7 +1,7 @@
 import json
 
 import clearml_poc
-from contrastive.args import Arguments
+from contrastive.args import Arguments, FineTuneLLM
 from contrastive.mlp import ContrastiveMLP, Detector
 from contrastive.loss import ContrastiveLoss
 import torch
@@ -50,7 +50,8 @@ def train(epoch):
     classifier_accuracies = []
 
     for anchor, same_type, different_type in fewnerd_processor.yield_train_dataset(batch_size=args.batch_size,
-                                                                            instances_per_type=args.instances_per_type):
+                                                                            instances_per_type=args.instances_per_type,
+                                                                            llm_layer=args.llm_layer):
         optimizer.zero_grad()
         anchor, good_batch, bad_batch = pick_llm_output(anchor, same_type, different_type)
 
@@ -94,7 +95,8 @@ def evaluate(epoch):
     ground_truth = []
 
     for anchor, same_type, different_type in fewnerd_processor.yield_test_dataset(batch_size=args.batch_size,
-                                                                                  instances_per_type=args.instances_per_type):
+                                                                                  instances_per_type=args.instances_per_type,
+                                                                                  llm_layer=args.llm_layer):
         anchor, good_batch, bad_batch = pick_llm_output(anchor, same_type, different_type)
 
         good_similarity, bad_similarity, similarity_loss = compute_similarity(
@@ -177,8 +179,7 @@ def pick_llm_output(*items):
                                                torch.tensor(item["embedding"][args.llm_layer]["start"]))).to(
             device)
         stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
-                                                                                             list) else tensorify(
-            batch).unsqueeze(0)
+                                                                                             list) else tensorify(batch).unsqueeze(0)
     else:
         raise ValueError(f"input_tokens should be one of ['end', 'diff', 'start_end_pair'] but got {args.input_tokens}")
 

@@ -107,9 +107,10 @@ def query_get_by_fine_grained_fewnerd(fine_grained_type: str | list[str]) -> dic
     }
 
 
-def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | list[str], batch_size) -> dict:
+def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | list[str], batch_size,
+                                                    llm_layer=None) -> dict:
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
-    return {
+    query = {
         "query": {
             "function_score": {
                 "query": {
@@ -132,6 +133,22 @@ def query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type: str | lis
         },
         "size": batch_size
     }
+
+    if llm_layer:
+        query["_source"] = all_source_except_other_embedding(llm_layer)
+
+    return query
+
+
+def all_source_except_other_embedding(llm_layer):
+    return [
+        "all_text",
+        "coarse_type",
+        "fine_type",
+        "phrase",
+        f"embedding.{llm_layer}.start",
+        f"embedding.{llm_layer}.end"
+    ]
 
 
 def fewnerd_random_results_per_fine_type(fine_types, instances_per_type=100):
@@ -196,10 +213,10 @@ def query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type: str | l
 
 
 def query_get_by_fine_grained_fewnerd_v3(fine_grained_type: str | list[str], randomized=True,
-                                         batch_size: int = 200) -> dict:
+                                         batch_size: int = 200, llm_layer=None) -> dict:
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
     if randomized:
-        return query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type, batch_size)
+        return query_get_by_fine_grained_fewnerd_v3_randomized(fine_grained_type, batch_size, llm_layer=llm_layer)
     return query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type, batch_size)
 
 
@@ -269,10 +286,13 @@ def query_hard_negative(fine_grained_type: str | list[str],
                             "min_term_freq": 1,
                             "min_doc_freq": 1
                         }
-                    } ,
+                    },
                     {
                         "term": {
-                            "coarse_type": coarse_grained_type
+                            "coarse_type": {
+                                "value": coarse_grained_type,
+                                "boost": 5
+                            }
                         }
                     }
                 ]
@@ -281,10 +301,6 @@ def query_hard_negative(fine_grained_type: str | list[str],
         "size": size
     }
     if llm_layer:
-        query["_source"] = [
-            "-embedding",
-            f"embedding.{llm_layer}.start",
-            f"embedding.{llm_layer}.end"
-        ]
+        query["_source"] = all_source_except_other_embedding(llm_layer)
 
     return query

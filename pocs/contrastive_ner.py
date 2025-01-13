@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import clearml_poc
@@ -39,6 +40,51 @@ def upload_models():
         classifier_model_clearml = clearml_poc.generate_tracked_model(name="classifier_model", framework="PyTorch")
         clearml_poc.upload_model_to_clearml(classifier_model_clearml, "classifier_model.pt")
 
+def tensorify(*document_items):
+    for document_item in document_items:
+        yield fewnerd_processor.pick_llm_output_for_document(
+            device=device,
+            input_tokens=args.input_tokens,
+            llm_layer=args.llm_layer,
+            is_fine_tune_llm=args.fine_tune_llm,
+            llm=llm or None,
+            documents=document_item if isinstance(document_item, list) else [document_item]
+        )
+
+async def one_type_epoch_training(fine_type):
+    good_similarities = []
+    bad_similarities = []
+    losses = []
+    classifier_accuracies = []
+    classifier_losses = []
+    async for anchor, same_type, different_type in fewnerd_processor.yield_train_dataset(
+            anchor_type=fine_type,
+            batch_size=args.batch_size,
+            instances_per_type=args.instances_per_type,
+            llm_layer=args.llm_layer):
+        optimizer.zero_grad()
+        anchor, good_batch, bad_batch = tensorify(anchor, same_type, different_type)
+        good_similarity, bad_similarity, similarity_loss = compute_similarity(
+            anchor,
+            good_batch,
+            bad_batch).values()
+        classifier_accuracy, classifier_loss = compute_accuracy(anchor, good_batch, bad_batch).values()
+        optimizer.step()
+
+        good_similarities.append(good_similarity)
+        bad_similarities.append(bad_similarity)
+        losses.append(similarity_loss)
+        classifier_accuracies.append(classifier_accuracy)
+        classifier_losses.append(classifier_loss)
+
+    return {
+        "good_similarity": good_similarities,
+        "bad_similarity": bad_similarities,
+        "similarity_loss": losses,
+        "classifier_accuracy": classifier_accuracies,
+        "classifier_loss": classifier_losses
+    }
+
 
 def train(epoch):
     similarity_model.train()
@@ -49,23 +95,15 @@ def train(epoch):
     bad_similarities = []
     classifier_accuracies = []
 
-    for anchor, same_type, different_type in fewnerd_processor.yield_train_dataset(batch_size=args.batch_size,
-                                                                            instances_per_type=args.instances_per_type,
-                                                                            llm_layer=args.llm_layer):
-        optimizer.zero_grad()
-        anchor, good_batch, bad_batch = pick_llm_output(anchor, same_type, different_type)
-
-        good_similarity, bad_similarity, similarity_loss = compute_similarity(
-            anchor,
-            good_batch,
-            bad_batch).values()
-        classifier_accuracy, classifier_loss = compute_accuracy(anchor, good_batch, bad_batch).values()
-        optimizer.step()
-
-        losses.append(classifier_loss + similarity_loss)
-        good_similarities.append(good_similarity)
-        bad_similarities.append(bad_similarity)
-        classifier_accuracies.append(classifier_accuracy)
+    all_train_types = fewnerd_processor.train_fine_types()
+    tasks = [one_type_epoch_training(fine_type) for fine_type in all_train_types]
+    loop = asyncio.get_event_loop()
+    results = loop.run_until_complete(asyncio.gather(*tasks))
+    for result in results:
+        good_similarities.extend(result["good_similarity"])
+        bad_similarities.extend(result["bad_similarity"])
+        losses.extend(result["similarity_loss"])
+        classifier_accuracies.extend(result["classifier_accuracy"])
 
     log_training_metrics(epoch, avg(losses), avg(good_similarities), avg(bad_similarities),
                          avg(classifier_accuracies),
@@ -83,21 +121,19 @@ def compute_accuracy_at_prediction(predictions: list[float], ground_truths: list
                          "ground_truth": gt_numpy,
                          "accuracy_if_threshold_was_here": np.asarray(accuracies)})
 
-def evaluate(epoch):
-    similarity_model.eval()
-    classifier_model.eval()
 
-    losses = []
+async def one_type_epoch_evaluation(fine_type):
     good_similarities = []
     bad_similarities = []
+    losses = []
     classifier_accuracies = []
     predictions = []
     ground_truth = []
-
-    for anchor, same_type, different_type in fewnerd_processor.yield_test_dataset(batch_size=args.batch_size,
-                                                                                  instances_per_type=args.instances_per_type,
-                                                                                  llm_layer=args.llm_layer):
-        anchor, good_batch, bad_batch = pick_llm_output(anchor, same_type, different_type)
+    async for anchor, same_type, different_type in fewnerd_processor.yield_test_dataset(anchor_type=fine_type,
+                                                                                        batch_size=args.batch_size,
+                                                                                        instances_per_type=args.instances_per_type,
+                                                                                        llm_layer=args.llm_layer):
+        anchor, good_batch, bad_batch = tensorify(anchor, same_type, different_type)
 
         good_similarity, bad_similarity, similarity_loss = compute_similarity(
             anchor,
@@ -120,6 +156,39 @@ def evaluate(epoch):
         ground_truth.extend([1] * len(good_batch_mlp))
         ground_truth.extend([0] * len(bad_batch_mlp))
 
+    return {
+        "good_similarity": good_similarities,
+        "bad_similarity": bad_similarities,
+        "loss": losses,
+        "classifier_accuracy": classifier_accuracies,
+        "predictions": predictions,
+        "ground_truth": ground_truth
+    }
+
+
+def evaluate(epoch):
+    similarity_model.eval()
+    classifier_model.eval()
+
+    losses = []
+    good_similarities = []
+    bad_similarities = []
+    classifier_accuracies = []
+    predictions = []
+    ground_truth = []
+
+    all_test_types = fewnerd_processor.test_fine_types()
+    tasks = [one_type_epoch_evaluation(fine_type) for fine_type in all_test_types]
+    loop = asyncio.get_event_loop()
+    results = loop.run_until_complete(asyncio.gather(*tasks))
+    for result in results:
+        good_similarities.extend(result["good_similarity"])
+        bad_similarities.extend(result["bad_similarity"])
+        losses.extend(result["loss"])
+        classifier_accuracies.extend(result["classifier_accuracy"])
+        predictions.extend(result["predictions"])
+        ground_truth.extend(result["ground_truth"])
+
     if RuntimeArgs.upload_all_predictions:
         accuracy_at_prediction = compute_accuracy_at_prediction(predictions, ground_truth)
         best_accuracy = accuracy_at_prediction["accuracy_if_threshold_was_here"].max()
@@ -135,55 +204,6 @@ def evaluate(epoch):
                          best_accuracy=best_accuracy)
     del losses, good_similarities, bad_similarities, classifier_accuracies
 
-
-def tensorify_db_document(dataset_document: dict | list[dict]) -> list[torch.Tensor]:
-    if isinstance(dataset_document, dict):
-        dataset_document = [dataset_document]
-    texts = [doc["all_text"] for doc in dataset_document]
-    texts_indices = [(doc["index_start"], doc["index_end"]) for doc in dataset_document]
-    tokens = llm.tokenize(texts).to(device)
-    hidden_items = llm.get_llm_at_layer(tokens, fine_tune_llm_args.layer, clone=False)
-    token_indices = [llm.token_indices_given_text_indices(text, text_indices) for text, text_indices in
-                     zip(texts, texts_indices)]
-    if args.input_tokens == "start_end_pair":
-        desired_tokens = [torch.concat((h[token_index[1]], h[token_index[0]])) for h, token_index in
-                          zip(hidden_items, token_indices)]
-    elif args.input_tokens == "end":
-        desired_tokens = [h[token_index[1]] for h, token_index in zip(hidden_items, token_indices)]
-    elif args.input_tokens == "diff":
-        desired_tokens = [h[token_index[1]] - h[token_index[0]] for h, token_index in zip(hidden_items, token_indices)]
-    else:
-        raise ValueError(f"input_tokens should be one of ['end', 'diff', 'start_end_pair'] but got {args.input_tokens}")
-    return desired_tokens
-
-def pick_llm_output(*items):
-    if args.fine_tune_llm:
-        tensorify = lambda item: tensorify_db_document(item)
-        stack = lambda batch: torch.stack(tensorify(batch))
-
-    elif args.input_tokens == "end":
-        tensorify = lambda item: torch.tensor(item["embedding"][args.llm_layer]["end"]).to(device)
-        stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
-                                                                                             list) else tensorify(
-            batch).unsqueeze(0)
-
-    elif args.input_tokens == "diff":
-        tensorify = lambda item: (torch.tensor(item["embedding"][args.llm_layer]["end"]) - torch.tensor(
-            item["embedding"][args.llm_layer]["start"])).to(device)
-        stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
-                                                                                             list) else tensorify(
-            batch).unsqueeze(0)
-
-    elif args.input_tokens == "start_end_pair":
-        tensorify = lambda item: torch.concat((torch.tensor(item["embedding"][args.llm_layer]["end"]),
-                                               torch.tensor(item["embedding"][args.llm_layer]["start"]))).to(
-            device)
-        stack = lambda batch: torch.stack([tensorify(item) for item in batch]) if isinstance(batch,
-                                                                                             list) else tensorify(batch).unsqueeze(0)
-    else:
-        raise ValueError(f"input_tokens should be one of ['end', 'diff', 'start_end_pair'] but got {args.input_tokens}")
-
-    return list(map(stack, items))
 
 
 def forward_similarity_model(x, compute_grad=False, detach=True):
@@ -223,6 +243,7 @@ def compute_accuracy(anchor, good_batch, bad_batch):
         "accuracy": avg(accuracies),
         "loss": avg(losses)
     }
+
 
 def compute_similarity(
         anchor,

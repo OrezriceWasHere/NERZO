@@ -1,5 +1,5 @@
 import os
-from elasticsearch import Elasticsearch
+from elasticsearch import Elasticsearch, AsyncElasticsearch
 import queries
 
 hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "http://dsicpu01:9200"
@@ -13,6 +13,14 @@ es = Elasticsearch(hosts=hosts,
                    max_retries=10000,
                    retry_on_timeout=True,
                    basic_auth=(user, password))
+
+async_es = AsyncElasticsearch(hosts=hosts,
+                              verify_certs=False,
+                              request_timeout=60,
+                              ssl_show_warn=False,
+                              max_retries=10000,
+                              retry_on_timeout=True,
+                              basic_auth=(user, password))
 
 elastic_query = None
 
@@ -67,14 +75,14 @@ def get_by_fine_grained_type_fewnerd_v3(fine_grained_type: str, batch_size, rand
     return response
 
 
-def get_by_fine_grained_type_fewnerd_v4(fine_grained_type: str, batch_size, randomize=False):
-    query = queries.query_get_by_fine_grained_fewnerd_v3(fine_grained_type, randomized=randomize, batch_size=batch_size)
+async def get_randomized_by_fine_type_fewnerd_v4(fine_grained_type: str, batch_size, llm_layer=None):
+    query = queries.query_get_by_fine_grained_fewnerd_v3(fine_grained_type, batch_size=batch_size, llm_layer=llm_layer)
     index = "fewnerd_v4_*"
-    response = search(index=index, query=query, filter_path=["hits.hits._source"])
-    response = response.get("hits", {}).get("hits", [])
+    response = await async_es.search(index=index, body=query, filter_path=["hits.hits._source"])
+    response = response.body.get("hits", {}).get("hits", [])
     return response
 
-def get_hard_negative_fewnerd(fine_types: str | list[str],
+async def get_hard_negative_fewnerd(fine_types: str | list[str],
                               coarse_type: str | list[str],
                               anchor_text:str,
                               batch_size: int,
@@ -87,8 +95,8 @@ def get_hard_negative_fewnerd(fine_types: str | list[str],
         llm_layer=llm_layer
     )
     index = "fewnerd_v4_*"
-    response = search(index=index, query=query, filter_path=["hits.hits._source"])
-    response = response.get("hits", {}).get("hits", [])
+    response = await async_es.search(index=index, body=query, filter_path=["hits.hits._source"])
+    response = response.body.get("hits", {}).get("hits", [])
     return response
 
 

@@ -22,13 +22,19 @@ def clearml_init():
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
                                task_name="hidden layers - match an entity to another sentence to detect same entity",
                                task_type=Task.TaskTypes.optimizer,
+
                                reuse_last_task_id=False)
     if execution_task.running_locally():
         name = input("enter description for task:\n")
         execution_task.set_name(name)
 
+
+
+
     if RuntimeArgs.running_remote:
-        execution_task.execute_remotely(queue_name=RuntimeArgs.compute_queue, exit_process=True)
+        execution_task.execute_remotely(queue_name=RuntimeArgs.compute_queue,
+
+                                        exit_process=True)
 
 @clearml_allowed
 def clearml_connect_hyperparams(hyperparams, name="general"):

@@ -1,6 +1,6 @@
 import asyncio
 import json
-
+from collections import defaultdict
 import clearml_poc
 from contrastive.args import Arguments, FineTuneLLM
 from contrastive.mlp import ContrastiveMLP, Detector
@@ -9,12 +9,8 @@ import torch
 from contrastive import fewnerd_processor
 import torch.nn.functional as F
 from tqdm import trange
-from sklearn.metrics import accuracy_score
-import pandas as pd
-import numpy as np
 from llm_interface import LLMInterface
 from peft import LoraConfig, PeftType
-
 from runtime_args import RuntimeArgs
 
 
@@ -40,6 +36,7 @@ def upload_models():
         classifier_model_clearml = clearml_poc.generate_tracked_model(name="classifier_model", framework="PyTorch")
         clearml_poc.upload_model_to_clearml(classifier_model_clearml, "classifier_model.pt")
 
+
 def tensorify(*document_items):
     for document_item in document_items:
         yield fewnerd_processor.pick_llm_output_for_document(
@@ -47,9 +44,10 @@ def tensorify(*document_items):
             input_tokens=args.input_tokens,
             llm_layer=args.llm_layer,
             is_fine_tune_llm=args.fine_tune_llm,
-            llm=llm or None,
+            llm=llm if args.fine_tune_llm else None,
             documents=document_item if isinstance(document_item, list) else [document_item]
         )
+
 
 async def one_type_epoch_training(fine_type):
     good_similarities = []
@@ -73,7 +71,7 @@ async def one_type_epoch_training(fine_type):
 
         good_similarities.append(good_similarity)
         bad_similarities.append(bad_similarity)
-        losses.append(similarity_loss)
+        losses.append(similarity_loss + classifier_loss)
         classifier_accuracies.append(classifier_accuracy)
         classifier_losses.append(classifier_loss)
 
@@ -90,36 +88,24 @@ def train(epoch):
     similarity_model.train()
     classifier_model.train()
 
-    losses = []
-    good_similarities = []
-    bad_similarities = []
-    classifier_accuracies = []
+    results_so_far = defaultdict(list)
 
     all_train_types = fewnerd_processor.train_fine_types()
     tasks = [one_type_epoch_training(fine_type) for fine_type in all_train_types]
     loop = asyncio.get_event_loop()
-    results = loop.run_until_complete(asyncio.gather(*tasks))
-    for result in results:
-        good_similarities.extend(result["good_similarity"])
-        bad_similarities.extend(result["bad_similarity"])
-        losses.extend(result["similarity_loss"])
-        classifier_accuracies.extend(result["classifier_accuracy"])
+    task_results = loop.run_until_complete(asyncio.gather(*tasks))
 
-    log_training_metrics(epoch, avg(losses), avg(good_similarities), avg(bad_similarities),
-                         avg(classifier_accuracies),
-                         series="train")
+    for result in task_results:
+        for key, value in result.items():
+            results_so_far[key].extend(value)
 
-    del losses, good_similarities, bad_similarities, classifier_accuracies
-
-
-def compute_accuracy_at_prediction(predictions: list[float], ground_truths: list[int]) -> pd.DataFrame:
-    p_numpy = np.asarray(predictions)
-    gt_numpy = np.asarray(ground_truths)
-    accuracies = [accuracy_score(gt_numpy, p_numpy >= prediction) for prediction, ground_truth in
-                  zip(predictions, ground_truths)]
-    return pd.DataFrame({"prediction": p_numpy,
-                         "ground_truth": gt_numpy,
-                         "accuracy_if_threshold_was_here": np.asarray(accuracies)})
+    log_training_metrics(epoch,
+                         similarity_loss=avg(results_so_far["similarity_loss"]),
+                         good_similarity=avg(results_so_far["good_similarity"]),
+                         bad_similarity=avg(results_so_far["bad_similarity"]),
+                         accuracy=avg(results_so_far["classifier_accuracy"]),
+                         series="train"
+                         )
 
 
 async def one_type_epoch_evaluation(fine_type):
@@ -141,11 +127,6 @@ async def one_type_epoch_evaluation(fine_type):
             bad_batch).values()
         classifier_accuracy, classifier_loss = compute_accuracy(anchor, good_batch, bad_batch).values()
 
-        losses.append(classifier_loss + similarity_loss)
-        good_similarities.append(good_similarity)
-        bad_similarities.append(bad_similarity)
-        classifier_accuracies.append(classifier_accuracy)
-
         anchor_mlp = forward_similarity_model(anchor, compute_grad=False, detach=False)
         good_batch_mlp = forward_similarity_model(good_batch, compute_grad=False, detach=False)
         bad_batch_mlp = forward_similarity_model(bad_batch, compute_grad=False, detach=False)
@@ -155,6 +136,12 @@ async def one_type_epoch_evaluation(fine_type):
 
         ground_truth.extend([1] * len(good_batch_mlp))
         ground_truth.extend([0] * len(bad_batch_mlp))
+
+        losses.append(classifier_loss + similarity_loss)
+        good_similarities.append(good_similarity)
+        bad_similarities.append(bad_similarity)
+        classifier_accuracies.append(classifier_accuracy)
+
 
     return {
         "good_similarity": good_similarities,
@@ -170,40 +157,34 @@ def evaluate(epoch):
     similarity_model.eval()
     classifier_model.eval()
 
-    losses = []
-    good_similarities = []
-    bad_similarities = []
-    classifier_accuracies = []
-    predictions = []
-    ground_truth = []
+    results_so_far = defaultdict(list)
 
     all_test_types = fewnerd_processor.test_fine_types()
     tasks = [one_type_epoch_evaluation(fine_type) for fine_type in all_test_types]
     loop = asyncio.get_event_loop()
     results = loop.run_until_complete(asyncio.gather(*tasks))
     for result in results:
-        good_similarities.extend(result["good_similarity"])
-        bad_similarities.extend(result["bad_similarity"])
-        losses.extend(result["loss"])
-        classifier_accuracies.extend(result["classifier_accuracy"])
-        predictions.extend(result["predictions"])
-        ground_truth.extend(result["ground_truth"])
+        for key, value in result.items():
+            results_so_far[key].extend(value)
 
     if RuntimeArgs.upload_all_predictions:
-        accuracy_at_prediction = compute_accuracy_at_prediction(predictions, ground_truth)
+        accuracy_at_prediction = fewnerd_processor.compute_accuracy_at_prediction(
+            predictions=results_so_far["predictions"],
+            ground_truths=results_so_far["ground_truth"])
         best_accuracy = accuracy_at_prediction["accuracy_if_threshold_was_here"].max()
 
     else:
         accuracy_at_prediction = None
         best_accuracy = None
 
-    log_training_metrics(epoch, avg(losses), avg(good_similarities), avg(bad_similarities),
-                         avg(classifier_accuracies),
+    log_training_metrics(epoch,
+                         similarity_loss=avg(results_so_far["loss"]),
+                         good_similarity=avg(results_so_far["good_similarity"]),
+                         bad_similarity=avg(results_so_far["bad_similarity"]),
+                         accuracy=avg(results_so_far["classifier_accuracy"]),
                          series="eval",
                          accuracy_at_prediction=accuracy_at_prediction,
                          best_accuracy=best_accuracy)
-    del losses, good_similarities, bad_similarities, classifier_accuracies
-
 
 
 def forward_similarity_model(x, compute_grad=False, detach=True):
@@ -292,8 +273,6 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     similarity_criterion = ContrastiveLoss(loss_fn=args.loss_fn, margin=args.triplet_loss_margin)
-    contrastive_criterion = ContrastiveLoss(loss_fn="contrastive_loss", margin=args.triplet_loss_margin)
-    triplet_criterion = ContrastiveLoss(loss_fn="triplet_loss", margin=args.triplet_loss_margin)
 
     classifier_criterion = torch.nn.CrossEntropyLoss()
     classifier_model = Detector().to(device)

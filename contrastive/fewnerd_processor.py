@@ -1,5 +1,8 @@
 import dataset_provider
 import torch
+from sklearn.metrics import accuracy_score
+import pandas as pd
+import numpy as np
 
 async def yield_dataset(anchor_type, dataset_types, batch_size=50, instances_per_type=100, llm_layer=None):
     extract = extract_entities_from_es_response
@@ -64,7 +67,7 @@ def extract_entities_from_es_response(response):
     return [docu["_source"] for docu in response]
 
 
-def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_llm, llm, documents: list[dict]):
+def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_llm, documents: list[dict], llm=None):
 
     diff_method = lambda end, start: (torch.tensor(end) - torch.tensor(start)).to(device)
     end_method = lambda end, start: torch.tensor(end).to(device)
@@ -85,6 +88,7 @@ def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_l
         return stack
 
     else:
+        assert llm is not None, "llm should be provided if is_fine_tune_llm is True"
         texts = [doc["all_text"] for doc in documents]
         texts_indices = [(doc["index_start"], doc["index_end"]) for doc in documents]
         tokens = llm.tokenize(texts).to(device)
@@ -95,3 +99,14 @@ def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_l
         start_representation = [h[token_index[0]] for h, token_index in zip(hidden_items, token_indices)]
         stack = torch.stack([factory[input_tokens](end, start) for end, start in zip(end_representation, start_representation)])
         return stack
+
+
+def compute_accuracy_at_prediction(predictions: list[float], ground_truths: list[int]) -> pd.DataFrame:
+    p_numpy = np.asarray(predictions)
+    gt_numpy = np.asarray(ground_truths)
+    accuracies = [accuracy_score(gt_numpy, p_numpy >= prediction) for prediction, ground_truth in
+                  zip(predictions, ground_truths)]
+    return pd.DataFrame({"prediction": p_numpy,
+                         "ground_truth": gt_numpy,
+                         "accuracy_if_threshold_was_here": np.asarray(accuracies)})
+

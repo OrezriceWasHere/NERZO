@@ -5,21 +5,19 @@ from clearml import Task
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
+from contrastive.args import Arguments, FineTuneLLM
 from llm_interface import LLMInterface
 
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
-Task.add_requirements("-rrequirements.txt")
-task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 2 jsonify dataset", reuse_last_task_id=False)
-task.execute_remotely()
+# Task.add_requirements("bitsandbytes")
+Task.set_offline(offline_mode=True)
+task = Task.init(project_name="fewnerd_pipeline",
+                 task_name="Pipeline step 2 jsonify dataset",
+                 auto_connect_streams=False,
+                 reuse_last_task_id=False)
+# task.execute_remotely()
 
-llm_id = "meta-llama/Llama-3.3-70B-Instruct"
-interested_layers = ["model.layers.13.self_attn.k_proj"]
-db_key = ["llama_3_3_13_k_proj"]
-layers_and_keys_pairs = list(zip(interested_layers, db_key))
-llm = LLMInterface(llm_id=llm_id, interested_layers=list(interested_layers), max_llm_layer=19)
-assert  torch.cuda.is_available()
-device = torch.device("cuda")
 
 def split_into_document(dataset_file):
     pbar = tqdm()
@@ -146,8 +144,28 @@ def main_process(dataset):
 
 
 if __name__ == "__main__":
+
+    args = Arguments()
+    task.connect(args, "general")
+    llm_args = FineTuneLLM()
+    task.connect(llm_args, "llm_args")
+
+    llm_id = llm_args.llm_id
+    interested_layers = [llm_args.layer]
+    db_key = [args.llm_layer]
+    layers_and_keys_pairs = list(zip(interested_layers, db_key))
+    llm = LLMInterface(llm_id=llm_id,
+                       interested_layers=list(interested_layers),
+                       max_llm_layer=llm_args.max_llm_layer)
+    assert torch.cuda.is_available()
+    device = torch.device("cuda")
+
     for dataset in fewnerd_dataset.datasets:
         main_process(dataset)
+
+    task.close()
+    Task.set_offline(False)
+    Task.import_offline_session(task.get_offline_mode_folder())
 
 
 

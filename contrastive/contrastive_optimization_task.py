@@ -58,7 +58,7 @@ args = task.connect(args)
 
 # Get the template task experiment that we want to optimize
 if not args['template_task_id']:
-    args['template_task_id'] = '5230479e79dd4f85aaa49874ae2f10ec'
+    args['template_task_id'] = '122c134c23c242d59d0678147123e0a9'
 
 # Set default queue name for the Training tasks themselves.
 # later can be overridden in the UI
@@ -78,13 +78,13 @@ an_optimizer = HyperParameterOptimizer(
     hyper_parameters=[
         UniformIntegerParameterRange('general/hidden_layer', min_value=50, max_value=250, step_size=25),
         UniformIntegerParameterRange('general/output_layer', min_value=50, max_value=250, step_size=25),
-        DiscreteParameterRange('general/lr', values=[5e-06]),
-        DiscreteParameterRange('general/activation', values=['silu']),
+        DiscreteParameterRange('general/lr', values=[7e-06]),
+        DiscreteParameterRange('general/activation', values=['silu', 'relu']),
         DiscreteParameterRange('general/noise', values=['dropout', 'identity']),
         DiscreteParameterRange('general/loss_fn', values=['triplet_loss', 'contrastive_loss']),
-        DiscreteParameterRange('general/llm_layer', values=['llama_3_17_v_proj']),
-        DiscreteParameterRange('general/input_tokens', values=['start_end_pair']),
-        DiscreteParameterRange('general/is_hidden_layer', values=[False]),
+        DiscreteParameterRange('general/llm_layer', values=['llama_3_17_v_proj', 'llama_3_3_13_k_proj']),
+        DiscreteParameterRange('general/input_tokens', values=['start_end_pair', 'end']),
+        DiscreteParameterRange('general/is_hidden_layer', values=[True, False]),
         DiscreteParameterRange('general/dropout', values=[0, 0.1, 0.2, 0.3, 0.4, 0.5]),
         DiscreteParameterRange('general/triplet_loss_margin', values=[0.2, 0.5, 0.65, 0.8, 0.9, 1.0]),
 
@@ -97,7 +97,7 @@ an_optimizer = HyperParameterOptimizer(
     # let us limit the number of concurrent experiments,
     # this in turn will make sure we do dont bombard the scheduler with experiments.
     # if we have an auto-scaler connected, this, by proxy, will limit the number of machine
-    max_number_of_concurrent_tasks=10,
+    max_number_of_concurrent_tasks=8,
     # this is the optimizer class (actually doing the optimization)
     # Currently, we can choose from GridSearch, RandomSearch or OptimizerBOHB (Bayesian optimization Hyper-Band)
     # more are coming soon...
@@ -123,7 +123,7 @@ an_optimizer = HyperParameterOptimizer(
     min_iteration_per_job=10,
     # Set the maximum number of iterations for an experiment to execute
     # (This is optional, unless using OptimizerBOHB where this is a must)
-    max_iteration_per_job=50
+    max_iteration_per_job=200
 )
 
 # if we are running as a service, just enqueue ourselves into the services queue and let it run the optimization

@@ -18,6 +18,8 @@ def clearml_init():
     Task.add_requirements('bitsandbytes', '>=0.43.2')
     Task.add_requirements('transformers', '>=4.45.0')
     Task.add_requirements('torch', '==2.4.0')
+    Task.add_requirements('aiohttp')
+
 
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
                                task_name="hidden layers - match an entity to another sentence to detect same entity",

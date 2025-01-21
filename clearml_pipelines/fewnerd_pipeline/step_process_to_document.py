@@ -11,12 +11,9 @@ from llm_interface import LLMInterface
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
 # Task.add_requirements("bitsandbytes")
-Task.set_offline(offline_mode=True)
 task = Task.init(project_name="fewnerd_pipeline",
                  task_name="Pipeline step 2 jsonify dataset",
-                 auto_connect_streams=False,
                  reuse_last_task_id=False)
-# task.execute_remotely()
 
 
 def split_into_document(dataset_file):
@@ -162,10 +159,6 @@ if __name__ == "__main__":
 
     for dataset in fewnerd_dataset.datasets:
         main_process(dataset)
-
-    task.close()
-    Task.set_offline(False)
-    Task.import_offline_session(task.get_offline_mode_folder())
 
 
 

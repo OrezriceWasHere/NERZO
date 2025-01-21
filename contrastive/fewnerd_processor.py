@@ -4,7 +4,10 @@ from sklearn.metrics import accuracy_score
 import pandas as pd
 import numpy as np
 
-async def yield_dataset(anchor_type, dataset_types, batch_size=50, instances_per_type=100, llm_layer=None):
+async def yield_dataset(anchor_type, dataset_types, batch_size=50,
+                        instances_per_type=100,
+                        llm_layer=None,
+                        should_use_hard_negative=True):
     extract = extract_entities_from_es_response
 
     batches  = [
@@ -26,11 +29,16 @@ async def yield_dataset(anchor_type, dataset_types, batch_size=50, instances_per
                                                                                    batch_size=batch_size,
                                                                                    llm_layer=llm_layer)
         other_types = list(set(dataset_types) - {result_type})
-        bad_batch = await dataset_provider.get_hard_negative_fewnerd(fine_types=other_types,
-                                                                     coarse_type=coarse_type,
-                                                                     anchor_text=text,
-                                                                     batch_size=batch_size,
-                                                                     llm_layer=llm_layer)
+        if should_use_hard_negative:
+            bad_batch = await dataset_provider.get_hard_negative_fewnerd(fine_types=other_types,
+                                                                         coarse_type=coarse_type,
+                                                                         anchor_text=text,
+                                                                         batch_size=batch_size,
+                                                                         llm_layer=llm_layer)
+        else:
+            bad_batch = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(other_types,
+                                                                                      batch_size=batch_size,
+                                                                                      llm_layer=llm_layer)
 
         anchor  = anchor["_source"]
         chunked_good_batch = extract(good_batch)
@@ -46,6 +54,7 @@ async def yield_train_dataset(anchor_type, **kwargs):
 async def yield_test_dataset(anchor_type, **kwargs):
     all_test_fine_types = test_fine_types()
     assert anchor_type in all_test_fine_types
+    kwargs = {"should_use_hard_negative": False, **kwargs}
     async for a, good, bad in yield_dataset(anchor_type, all_test_fine_types, **kwargs):
         yield  a, good, bad
 
@@ -109,4 +118,3 @@ def compute_accuracy_at_prediction(predictions: list[float], ground_truths: list
     return pd.DataFrame({"prediction": p_numpy,
                          "ground_truth": gt_numpy,
                          "accuracy_if_threshold_was_here": np.asarray(accuracies)})
-

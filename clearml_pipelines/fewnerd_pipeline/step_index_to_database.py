@@ -3,9 +3,10 @@ import os
 import hashlib
 import ijson
 from clearml import Task, Dataset
-from elasticsearch import Elasticsearch, AsyncElasticsearch
+from elasticsearch import  AsyncElasticsearch
 from tqdm.asyncio import tqdm
-import aiohttp  # Don't delete import
+
+import runtime_args
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 import urllib3
 
@@ -20,10 +21,6 @@ task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 3 ind
                  reuse_last_task_id=False)
 
 task.execute_remotely()
-
-hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "http://dsigpu07:9200"
-user = os.environ.get("ELASTICSEARCH_USER") or "elastic"
-password = os.environ.get("ELASTICSEARCH_PASSWORD") or "XXX"
 
 mapping = {
     "mappings": {
@@ -128,12 +125,7 @@ mapping = {
     }
 }
 
-es = AsyncElasticsearch(hosts=hosts,
-                        verify_certs=False,
-                        max_retries=10,
-                        request_timeout=30,
-                        retry_on_timeout=True,
-                        basic_auth=(user, password))
+es = AsyncElasticsearch(**runtime_args.ElasticsearchConnection().model_dump())
 
 
 async def ensure_existing_index(index_name, mapping):

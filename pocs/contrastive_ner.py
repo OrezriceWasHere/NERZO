@@ -1,16 +1,19 @@
 import asyncio
 import json
 from collections import defaultdict
+import pandas as pd
+import numpy as np
 import clearml_poc
 from contrastive.args import Arguments, FineTuneLLM
 from contrastive.mlp import ContrastiveMLP, Detector
 from contrastive.loss import ContrastiveLoss
 import torch
-from contrastive import fewnerd_processor
+from contrastive import fewnerd_processor, helper
 import torch.nn.functional as F
 from tqdm import trange
 from llm_interface import LLMInterface
 from peft import LoraConfig, PeftType
+from sklearn import metrics
 from runtime_args import RuntimeArgs
 
 
@@ -142,7 +145,6 @@ async def one_type_epoch_evaluation(fine_type):
         bad_similarities.append(bad_similarity)
         classifier_accuracies.append(classifier_accuracy)
 
-
     return {
         "good_similarity": good_similarities,
         "bad_similarity": bad_similarities,
@@ -158,14 +160,25 @@ def evaluate(epoch):
     classifier_model.eval()
 
     results_so_far = defaultdict(list)
+    auc_threshold_graph = defaultdict(list)
 
     all_test_types = fewnerd_processor.test_fine_types()
     tasks = [one_type_epoch_evaluation(fine_type) for fine_type in all_test_types]
     loop = asyncio.get_event_loop()
     results = loop.run_until_complete(asyncio.gather(*tasks))
-    for result in results:
+    for fine_type, result in zip(all_test_types, results):
         for key, value in result.items():
             results_so_far[key].extend(value)
+        type_auc = metrics.roc_auc_score(y_score=result["predictions"], y_true=result["ground_truth"])
+        type_optimal_threshold, type_accuracy = helper.find_optimal_threshold(y_score=result["predictions"],
+                                                               y_true=result["ground_truth"])
+        auc_threshold_graph["type"].append(fine_type)
+        auc_threshold_graph["threshold"].append(type_optimal_threshold)
+        auc_threshold_graph["accuracy"].append(type_accuracy)
+        auc_threshold_graph["auc"].append(type_auc)
+
+    auc = metrics.roc_auc_score(y_score=results_so_far["predictions"], y_true=results_so_far["ground_truth"])
+    tpr, fpr, _ = metrics.roc_curve(y_score=results_so_far["predictions"], y_true=results_so_far["ground_truth"])
 
     if RuntimeArgs.upload_all_predictions:
         accuracy_at_prediction = fewnerd_processor.compute_accuracy_at_prediction(
@@ -184,10 +197,25 @@ def evaluate(epoch):
                          accuracy=avg(results_so_far["classifier_accuracy"]),
                          series="eval",
                          accuracy_at_prediction=accuracy_at_prediction,
-                         best_accuracy=best_accuracy)
+                         best_accuracy=best_accuracy,
+                         auc=auc)
+
+    clearml_poc.add_scatter(title="roc_curve",
+                            series="eval",
+                            iteration=epoch,
+                            values=np.vstack((tpr, fpr)).transpose())
+
+    index_column = auc_threshold_graph.pop("type")
+    clearml_poc.add_table(title="per fine type",
+                          series="eval",
+                          iteration=epoch,
+                          table=pd.DataFrame(data=auc_threshold_graph, index=index_column))
 
 
 def forward_similarity_model(x, compute_grad=False, detach=True):
+    if args.disable_similarity_training:
+        return x
+
     if not args.fine_tune_llm:
         if compute_grad:
             x = similarity_model(x)
@@ -238,7 +266,8 @@ def compute_similarity(
     positive_examples = forward_similarity_model(positive_examples, compute_grad=True, detach=False)
     negative_examples = forward_similarity_model(negative_examples, compute_grad=True, detach=False)
     loss = similarity_criterion(anchor, positive_examples, negative_examples)
-    loss.backward()
+    if not args.disable_similarity_training:
+        loss.backward()
 
     losses.append(loss.item())
     good_similarities.append(F.cosine_similarity(anchor, positive_examples, dim=-1).mean().item())
@@ -251,16 +280,10 @@ def compute_similarity(
     }
 
 
-def log_training_metrics(index, similarity_loss, good_similarity, bad_similarity, accuracy, series, **kwargs):
-    clearml_poc.add_point_to_graph(title="similarity_loss", series=series, x=index, y=similarity_loss)
-    clearml_poc.add_point_to_graph(title="good_similarity", series=series, x=index, y=good_similarity)
-    clearml_poc.add_point_to_graph(title="bad_similarity", series=series, x=index, y=bad_similarity)
-    clearml_poc.add_point_to_graph(title="accuracy", series=series, x=index, y=accuracy)
-    if kwargs.get("accuracy_at_prediction", None):
-        clearml_poc.add_table(title="accuracy at prediction", series=series, iteration=index,
-                              table=kwargs["accuracy_at_prediction"])
-    if kwargs.get("best_accuracy", None):
-        clearml_poc.add_point_to_graph(title="best_accuracy", series=series, x=index, y=kwargs["best_accuracy"])
+def log_training_metrics(index, series, **kwargs):
+    for metric, value in kwargs.items():
+        if value:
+            clearml_poc.add_point_to_graph(title=metric, series=series, x=index, y=value)
 
 
 if __name__ == "__main__":

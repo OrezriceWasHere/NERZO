@@ -1,31 +1,17 @@
 import os
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 import queries
+import runtime_args
 
-hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "http://dsicpu01:9200"
-user = os.environ.get("ELASTICSEARCH_USER") or "elastic"
-password = os.environ.get("ELASTICSEARCH_PASSWORD") or "XXX"
+elastic_conf = runtime_args.ElasticsearchConnection()
 
-es = Elasticsearch(hosts=hosts,
-                   verify_certs=False,
-                   request_timeout=60,
-                   ssl_show_warn=False,
-                   max_retries=10000,
-                   retry_on_timeout=True,
-                   basic_auth=(user, password))
+es = Elasticsearch(**elastic_conf.model_dump())
 
-async_es = AsyncElasticsearch(hosts=hosts,
-                              verify_certs=False,
-                              request_timeout=60,
-                              ssl_show_warn=False,
-                              max_retries=10000,
-                              retry_on_timeout=True,
-                              basic_auth=(user, password))
+async_es = AsyncElasticsearch(**elastic_conf.model_dump())
 
 elastic_query = None
 
 both_indices = "ner_poc"
-
 new_index = "no_redundant_object"
 
 

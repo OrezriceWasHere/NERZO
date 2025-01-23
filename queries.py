@@ -1,3 +1,5 @@
+
+
 def query_get_by_title(title: str) -> dict:
     return {
         "query": {
@@ -145,6 +147,8 @@ def all_source_except_other_embedding(llm_layer):
         "all_text",
         "coarse_type",
         "fine_type",
+        "doc_id",
+        "text_id",
         "phrase",
         f"embedding.{llm_layer}.start",
         f"embedding.{llm_layer}.end"
@@ -209,6 +213,20 @@ def query_get_by_fine_grained_fewnerd_v3_unrandomized(fine_grained_type: str | l
             {"fine_type": {"order": "asc"}}
         ],
         "size": batch_size
+    }
+
+def query_search_by_similarity(embedding, layer, default_filter_query=None):
+    filter_query = default_filter_query or {"match_all":{}}
+    return {
+        "script_score": {
+            "query": filter_query,
+            "script": {
+                "source": f"cosineSimilarity(params.query_vector, '{layer}') + 1.0",
+                "params": {
+                    "query_vector": embedding
+                }
+            }
+        }
     }
 
 

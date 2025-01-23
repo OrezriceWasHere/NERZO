@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 from collections import defaultdict
 import pandas as pd
 import numpy as np
@@ -21,23 +22,25 @@ def main():
     for e in trange(args.epochs):
         train(e)
         evaluate(e)
-
-    upload_models()
+        upload_models(e)
 
 
 def avg(l):
     return sum(l) / len(l)
 
 
-def upload_models():
-    torch.save(similarity_model.state_dict(), f"similarity_model.pt")
-    similarity_model_clearml = clearml_poc.generate_tracked_model(name="similarity_model", framework="PyTorch")
-    clearml_poc.upload_model_to_clearml(similarity_model_clearml, "similarity_model.pt")
+def upload_models(epoch):
+    global max_benchmark, current_benchmark
+    if epoch == args.epochs - 1 or math.isclose(current_benchmark, max_benchmark):
 
-    if not args.fine_tune_llm:
-        torch.save(classifier_model.state_dict(), f"classifier_model.pt")
-        classifier_model_clearml = clearml_poc.generate_tracked_model(name="classifier_model", framework="PyTorch")
-        clearml_poc.upload_model_to_clearml(classifier_model_clearml, "classifier_model.pt")
+        torch.save(similarity_model.state_dict(), f"similarity_model.pt")
+        similarity_model_clearml = clearml_poc.generate_tracked_model(name="similarity_model", framework="PyTorch")
+        clearml_poc.upload_model_to_clearml(similarity_model_clearml, "similarity_model.pt")
+
+        if not args.fine_tune_llm:
+            torch.save(classifier_model.state_dict(), f"classifier_model.pt")
+            classifier_model_clearml = clearml_poc.generate_tracked_model(name="classifier_model", framework="PyTorch")
+            clearml_poc.upload_model_to_clearml(classifier_model_clearml, "classifier_model.pt")
 
 
 def tensorify(*document_items):
@@ -211,6 +214,10 @@ def evaluate(epoch):
                           iteration=epoch,
                           table=pd.DataFrame(data=auc_threshold_graph, index=index_column))
 
+    global max_benchmark, current_benchmark
+    current_benchmark = auc
+    max_benchmark = max(current_benchmark, max_benchmark)
+
 
 def forward_similarity_model(x, compute_grad=False, detach=True):
     if args.disable_similarity_training:
@@ -288,6 +295,8 @@ def log_training_metrics(index, series, **kwargs):
 
 if __name__ == "__main__":
     clearml_poc.clearml_init()
+    max_benchmark = 0
+    current_benchmark = 0
     assert torch.cuda.is_available(), "no gpu available"
     args: Arguments = Arguments()
     clearml_poc.clearml_connect_hyperparams(args)

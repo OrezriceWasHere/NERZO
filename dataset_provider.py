@@ -153,3 +153,13 @@ def get_top_results_for_entities(count_entity_types=500,
     query = queries.query_aggergate_by_type(count_entity_types, count_per_type)
     response = search(index=index, query=query)
     return response
+
+async def consume_big_aggregation(query, agg_key, index):
+    response = await async_es.search(index=index, body=query, size=0)
+
+    while "after_key" in response["aggregations"][agg_key]:
+        after_key = response["aggregations"][agg_key]["after_key"]
+        for bucket in response["aggregations"][agg_key]["buckets"]:
+            yield bucket
+        query["aggs"][agg_key]["composite"]["after"] = after_key
+        response = await async_es.search(index=index, body=query, size=0)

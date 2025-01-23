@@ -13,7 +13,7 @@ def clearml_allowed(func):
 
 
 @clearml_allowed
-def clearml_init():
+def clearml_init(task_name=None):
     global execution_task, output_model
     Task.add_requirements('bitsandbytes', '>=0.43.2')
     Task.add_requirements('transformers', '>=4.45.0')
@@ -22,11 +22,11 @@ def clearml_init():
 
 
     execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
-                               task_name="hidden layers - match an entity to another sentence to detect same entity",
+                               task_name=task_name or "hidden layers - match an entity to another sentence to detect same entity",
                                task_type=Task.TaskTypes.optimizer,
 
                                reuse_last_task_id=False)
-    if execution_task.running_locally():
+    if execution_task.running_locally() and not task_name:
         name = input("enter description for task:\n")
         execution_task.set_name(name)
 

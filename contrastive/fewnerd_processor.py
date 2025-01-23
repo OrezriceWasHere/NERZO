@@ -1,3 +1,5 @@
+from functools import partial
+
 import dataset_provider
 import torch
 from sklearn.metrics import accuracy_score
@@ -75,25 +77,27 @@ def test_fine_types(batch_size=50, instances_per_type=100, llm_layer=None):
 def extract_entities_from_es_response(response):
     return [docu["_source"] for docu in response]
 
+def choose_llm_representation(end, start, input_tokens):
+
+    assert input_tokens in __input_token_factory, f"input_tokens should be one of {list(__input_token_factory.keys())} but got {input_tokens}"
+    return __input_token_factory[input_tokens](end, start)
+
+
+__input_token_factory = {
+    "diff": lambda end, start: (torch.tensor(end) - torch.tensor(start)),
+    "end":  lambda end, start: torch.tensor(end),
+    "start_end_pair": lambda end, start: torch.concat((torch.tensor(end), torch.tensor(start)))
+}
 
 def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_llm, documents: list[dict], llm=None):
 
-    diff_method = lambda end, start: (torch.tensor(end) - torch.tensor(start)).to(device)
-    end_method = lambda end, start: torch.tensor(end).to(device)
-    start_end_pair_method = lambda end, start: torch.concat((torch.tensor(end), torch.tensor(start))).to(device)
+    llm_representation = partial(choose_llm_representation, input_tokens=input_tokens)
 
-    factory = {
-        "diff": diff_method,
-        "end": end_method,
-        "start_end_pair": start_end_pair_method
-    }
-
-    assert input_tokens in factory, f"input_tokens should be one of {list(factory.keys())} but got {input_tokens}"
 
     if not is_fine_tune_llm:
         end_representation = [item["embedding"][llm_layer]["end"] for item in documents]
         start_representation = [item["embedding"][llm_layer]["start"] for item in documents]
-        stack = torch.stack([factory[input_tokens](end, start) for end, start in zip(end_representation, start_representation)])
+        stack = torch.stack([llm_representation(end, start) for end, start in zip(end_representation, start_representation)]).to(deivce)
         return stack
 
     else:
@@ -106,7 +110,7 @@ def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_l
                          zip(texts, texts_indices)]
         end_representation = [h[token_index[1]] for h, token_index in zip(hidden_items, token_indices)]
         start_representation = [h[token_index[0]] for h, token_index in zip(hidden_items, token_indices)]
-        stack = torch.stack([factory[input_tokens](end, start) for end, start in zip(end_representation, start_representation)])
+        stack = torch.stack([llm_representation(end, start) for end, start in zip(end_representation, start_representation)]).to(device)
         return stack
 
 

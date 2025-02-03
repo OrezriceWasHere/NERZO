@@ -48,6 +48,7 @@ async def handle_type(fine_type, ids):
             recall_list.append(recall)
         size_desc = k if k in [10, 50] else "size"
         result[f"recall@{size_desc}"] = sum(recall_list) / len(recall_list)
+    result["size"] = count_type
     return result
 
 
@@ -155,7 +156,7 @@ def anchors():
 if __name__ == "__main__":
     clearml_poc.clearml_init(task_name="calculate recall")
 
-    layer_obj = {"layer_id": "llama_3_3_13_k_proj"}
+    layer_obj = {"layer_id": "050a5381d6c1452bbb1796da900eb098"}
     clearml_poc.clearml_connect_hyperparams(layer_obj, name="layer_name")
     layer = layer_obj["layer_id"]
     index = "fewnerd_tests"

@@ -183,3 +183,43 @@ elasticsearch_storage_mapping = {
     }
 }
 
+elasticsearch_mapping_for_full_sentence = {
+    "mappings": {
+        "properties": {
+            "all_text": {
+                "type": "text",
+                "term_vector": "yes"
+            },
+            "text_id": {
+                "type": "keyword"
+            },
+            "tagging": {
+                "type": "nested",
+                "properties": {
+                    "coarse_type": {
+                        "type": "keyword"
+                    },
+                    "fine_type": {
+                        "type": "keyword"
+                    },
+                    "index_end": {
+                        "type": "integer"
+                    },
+                    "index_start": {
+                        "type": "integer"
+                    },
+                    "phrase": {
+                        "type": "text",
+                        "term_vector": "yes"
+                    }
+                }
+            }
+
+        }
+    },
+    "settings": {
+        "index": {
+            "max_inner_result_window": 1000000
+        }
+    }
+}

@@ -13,19 +13,21 @@ def clearml_allowed(func):
 
 
 @clearml_allowed
-def clearml_init(task_name=None):
+def clearml_init(project_name=None, task_name=None, requirements=None):
     global execution_task, output_model
     Task.add_requirements('bitsandbytes', '>=0.43.2')
     Task.add_requirements('transformers', '>=4.45.0')
     Task.add_requirements('torch', '==2.4.0')
     Task.add_requirements('aiohttp')
+    requirements = requirements or []
+    for requirement in requirements:
+        Task.add_requirements(requirement, '')
 
-
-    execution_task = Task.init(project_name="NER - Zero Shot Chat GPT",
+    execution_task = Task.init(project_name=project_name or "NER - Zero Shot Chat GPT",
                                task_name=task_name or "hidden layers - match an entity to another sentence to detect same entity",
                                task_type=Task.TaskTypes.optimizer,
-
                                reuse_last_task_id=False)
+
     if execution_task.running_locally() and not task_name:
         name = input("enter description for task:\n")
         execution_task.set_name(name)
@@ -35,8 +37,13 @@ def clearml_init(task_name=None):
 
     if RuntimeArgs.running_remote:
         execution_task.execute_remotely(queue_name=RuntimeArgs.compute_queue,
-
                                         exit_process=True)
+
+
+@clearml_allowed
+def add_requirement(requirement, version=''):
+    execution_task.add_requirements(requirement, version)
+
 
 @clearml_allowed
 def clearml_connect_hyperparams(hyperparams, name="general"):
@@ -107,4 +114,8 @@ def upload_model_to_clearml(model: OutputModel, model_path):
         execution_task.update_output_model(model_path=model_path)
         OutputModel.wait_for_uploads()
         print(f'uploading models from {model_path}')
+
+@clearml_allowed
+def add_tags(tags):
+    execution_task.add_tags(tags)
 

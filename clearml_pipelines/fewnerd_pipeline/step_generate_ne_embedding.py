@@ -4,12 +4,11 @@ import tqdm
 from clearml import Task, Model
 from elasticsearch import AsyncElasticsearch
 import urllib3
-
 import contrastive.fewnerd_processor
 import queries
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from contrastive import fewnerd_processor
-from contrastive.args import FineTuneLLM, Arguments
+from contrastive.args import FineTuneLLM, Arguments, dataclass_decoder
 from contrastive.mlp import ContrastiveMLP
 from runtime_args import RuntimeArgs, ElasticsearchConnection
 import itertools
@@ -137,10 +136,9 @@ if __name__ == "__main__":
 
     fewnerd_schema = fewnerd_dataset.elasticsearch_tests_mapping
     original_keys = list(fewnerd_schema["mappings"]["properties"]["embedding"]["properties"].keys())
-    mlp_layer = {"layer_id": fine_tune_llm.mlp_head_model_id_from_clearml}
+    mlp_layer = {"layer_id": "df02c6c7ff074c3387f663d79bb671f8"}
     task.connect(mlp_layer, name="layer_name")
     mlp_id = mlp_layer["layer_id"]
-
     indexing_original_llm_tokens = mlp_id in original_keys
     write_index = "fewnerd_tests"
     if indexing_original_llm_tokens:
@@ -150,9 +148,9 @@ if __name__ == "__main__":
     else:
         model = Model(mlp_id)
         assert model
-        args_of_task = Task.get_task(model.task).get_parameters(cast=True)
-        args = Arguments(
-            **{key.replace("general/", ""): value for key, value in args_of_task.items() if "general" in key})
+        args_of_task = Task.get_task(model.task).get_parameters(cast=False)
+        args_dict = {key.replace("general/", ""): value for key, value in args_of_task.items() if "general" in key}
+        args:Arguments = dataclass_decoder(dct=args_dict, cls=Arguments)
         local_mlp_head_path = model.get_local_copy(raise_on_error=True)
         similarity_model = ContrastiveMLP(args).to(device)
         assert local_mlp_head_path, "could not download mlp head model"

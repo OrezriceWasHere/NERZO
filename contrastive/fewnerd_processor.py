@@ -1,18 +1,19 @@
+import math
 from functools import partial
-
 import dataset_provider
 import torch
 from sklearn.metrics import accuracy_score
 import pandas as pd
 import numpy as np
 
+
 async def yield_dataset(anchor_type, dataset_types, batch_size=50,
                         instances_per_type=100,
-                        llm_layer=None,
-                        should_use_hard_negative=True):
+                        hard_negative_ratio=0,
+                        llm_layer=None):
     extract = extract_entities_from_es_response
 
-    batches  = [
+    batches = [
         (start_index, min(start_index + batch_size, instances_per_type))
         for start_index in range(0, instances_per_type, batch_size)
     ]
@@ -31,34 +32,60 @@ async def yield_dataset(anchor_type, dataset_types, batch_size=50,
                                                                                    batch_size=batch_size,
                                                                                    llm_layer=llm_layer)
         other_types = list(set(dataset_types) - {result_type})
-        if should_use_hard_negative:
-            bad_batch = await dataset_provider.get_hard_negative_fewnerd(fine_types=other_types,
-                                                                         coarse_type=coarse_type,
-                                                                         anchor_text=text,
-                                                                         batch_size=batch_size,
-                                                                         llm_layer=llm_layer)
-        else:
-            bad_batch = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(other_types,
-                                                                                      batch_size=batch_size,
-                                                                                      llm_layer=llm_layer)
 
-        anchor  = anchor["_source"]
+        anchor = anchor["_source"]
         chunked_good_batch = extract(good_batch)
-        chunked_bad_batch = extract(bad_batch)
+        chunked_bad_batch = await negative_examples(
+            coarse_type=coarse_type,
+            fine_types=other_types,
+            batch_size=batch_size,
+            llm_layer=llm_layer,
+            anchor_text=text,
+            hard_negative_ratio=hard_negative_ratio
+        )
         yield anchor, chunked_good_batch, chunked_bad_batch
+
+
+async def negative_examples(
+        coarse_type,
+        fine_types,
+        batch_size,
+        llm_layer,
+        anchor_text,
+        hard_negative_ratio):
+    hard_negative_amount = math.ceil(hard_negative_ratio * batch_size)
+    easy_negative_amount = batch_size - hard_negative_amount
+    hard_negative, easy_negative = [], []
+    if hard_negative_amount > 0:
+        hard_negative = await dataset_provider.get_hard_negative_fewnerd(fine_types=fine_types,
+                                                                         coarse_type=coarse_type,
+                                                                         anchor_text=anchor_text,
+                                                                         batch_size=hard_negative_amount,
+                                                                         llm_layer=llm_layer)
+    if easy_negative_amount > 0:
+        easy_negative = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(fine_types,
+                                                                                      batch_size=easy_negative_amount,
+                                                                                      llm_layer=llm_layer)
+    bad_batch = extract_entities_from_es_response(hard_negative) + \
+    extract_entities_from_es_response(easy_negative)
+
+    return bad_batch
+
 
 async def yield_train_dataset(anchor_type, **kwargs):
     all_train_fine_types = train_fine_types()
     assert anchor_type in all_train_fine_types
     async for a, good, bad in yield_dataset(anchor_type, all_train_fine_types, **kwargs):
-        yield  a, good, bad
+        yield a, good, bad
+
 
 async def yield_test_dataset(anchor_type, **kwargs):
     all_test_fine_types = test_fine_types()
     assert anchor_type in all_test_fine_types
-    kwargs = {"should_use_hard_negative": False, **kwargs}
+    kwargs = {"hard_negative_ratio": 0.0, **kwargs}
     async for a, good, bad in yield_dataset(anchor_type, all_test_fine_types, **kwargs):
-        yield  a, good, bad
+        yield a, good, bad
+
 
 def train_fine_types():
     return ['education', 'airport', 'restaurant', 'sportsleague', 'disease', 'hospital', 'painting', 'other',
@@ -75,29 +102,29 @@ def test_fine_types(batch_size=50, instances_per_type=100, llm_layer=None):
 
 
 def extract_entities_from_es_response(response):
-    return [docu["_source"] for docu in response]
+    return [docu["_source"] for docu in response] if response else []
+
 
 def choose_llm_representation(end, start, input_tokens):
-
     assert input_tokens in __input_token_factory, f"input_tokens should be one of {list(__input_token_factory.keys())} but got {input_tokens}"
     return __input_token_factory[input_tokens](end, start)
 
 
 __input_token_factory = {
     "diff": lambda end, start: (torch.tensor(end) - torch.tensor(start)),
-    "end":  lambda end, start: torch.tensor(end),
+    "end": lambda end, start: torch.tensor(end),
     "start_end_pair": lambda end, start: torch.concat((torch.tensor(end), torch.tensor(start)))
 }
 
+
 def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_llm, documents: list[dict], llm=None):
-
     llm_representation = partial(choose_llm_representation, input_tokens=input_tokens)
-
 
     if not is_fine_tune_llm:
         end_representation = [item["embedding"][llm_layer]["end"] for item in documents]
         start_representation = [item["embedding"][llm_layer]["start"] for item in documents]
-        stack = torch.stack([llm_representation(end, start) for end, start in zip(end_representation, start_representation)]).to(deivce)
+        stack = torch.stack(
+            [llm_representation(end, start) for end, start in zip(end_representation, start_representation)]).to(device)
         return stack
 
     else:
@@ -110,7 +137,8 @@ def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_l
                          zip(texts, texts_indices)]
         end_representation = [h[token_index[1]] for h, token_index in zip(hidden_items, token_indices)]
         start_representation = [h[token_index[0]] for h, token_index in zip(hidden_items, token_indices)]
-        stack = torch.stack([llm_representation(end, start) for end, start in zip(end_representation, start_representation)]).to(device)
+        stack = torch.stack(
+            [llm_representation(end, start) for end, start in zip(end_representation, start_representation)]).to(device)
         return stack
 
 

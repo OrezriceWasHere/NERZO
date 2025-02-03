@@ -1,19 +1,12 @@
 import json
 import hashlib
-from dataclasses import asdict
-
 import torch
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
-
 import clearml_poc
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from contrastive.args import Arguments, FineTuneLLM
 from sentence_embedder import SentenceEmbedder
-
-# Connecting ClearML with the current process,
-# from here on everything is logged automatically
-
 
 
 def split_into_document(dataset_file):
@@ -59,14 +52,6 @@ def create_embedding(text):
     embeddings = {
         llm_id: embedding
     }
-    # for model_layer, db_name  in layers_and_keys_pairs:
-    #     h = llm.get_llm_at_layer(tokens, model_layer)[0]
-    #     start = h[llm_indices[0] - 1]
-    #     end = h[llm_indices[1]]
-    #     embeddings[db_name] = {
-    #             "start": start.tolist(),
-    #             "end": end.tolist()
-    #    }
 
     return embeddings
 
@@ -155,9 +140,6 @@ if __name__ == "__main__":
     clearml_poc.clearml_connect_hyperparams(llm_args, "llm_args")
 
     llm_id = llm_args.llm_id
-    # interested_layers = [llm_args.layer]
-    # db_key = [args.llm_layer]
-    # layers_and_keys_pairs = list(zip(interested_layers, db_key))
     llm = SentenceEmbedder(llm_id=llm_id,
                            max_llm_layer=llm_args.max_llm_layer,
                            interested_layers=llm_args.layer

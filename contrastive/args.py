@@ -44,12 +44,9 @@ def dataclass_decoder(dct: dict, cls: Type[Any]) -> Any:
     field_types = {field.name: field.type for field in fields(cls)}
     return cls(**{key: convert_value(value, field_types[key]) for key, value in dct.items() if key in field_types})
 
-
-
-
 @dataclass
 class FineTuneLLM:
-    llm_id: str = "meta-llama/Meta-Llama-3.1-8B"
+    llm_id: str = 'intfloat/e5-mistral-7b-instruct'
     layer: str = "model.layers.17.self_attn.v_proj"
     mlp_head_model_id_from_clearml: str = "a18145c711b046cbb9fbb86e38ac3e47"
     max_llm_layer: Optional[int] = 18

@@ -1,5 +1,7 @@
 import json
 import hashlib
+from dataclasses import asdict
+
 import torch
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
@@ -140,10 +142,7 @@ if __name__ == "__main__":
     clearml_poc.clearml_connect_hyperparams(llm_args, "llm_args")
 
     llm_id = llm_args.llm_id
-    llm = SentenceEmbedder(llm_id=llm_id,
-                           max_llm_layer=llm_args.max_llm_layer,
-                           interested_layers=llm_args.layer
-                           )
+    llm = SentenceEmbedder(**asdict(llm_args))
     assert torch.cuda.is_available()
     device = torch.device("cuda")
 

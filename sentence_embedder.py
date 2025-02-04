@@ -37,13 +37,12 @@ class SentenceEmbedder(AbstractSentenceEmbedder):
 
 class E5MistralSentenceEmbedder(AbstractSentenceEmbedder):
 
-    def __init__(self, llm_id, passage_prompt="", query_prompt=""):
+    def __init__(self, llm_id, passage_prompt="", query_prompt="", **kwargs):
         super().__init__(llm_id, passage_prompt, query_prompt)
         self.model = SentenceTransformer(llm_id)
 
     def add_eos(self, input_examples):
-        input_examples = [input_examples] if not isinstance(input_examples, list) else input_examples
-        input_examples = [input_example + self.model.tokenizer.eos_token for input_example in input_examples]
+        input_examples = input_examples + self.model.tokenizer.eos_token
         return input_examples
 
     def forward_passage(self, passage):
@@ -52,8 +51,8 @@ class E5MistralSentenceEmbedder(AbstractSentenceEmbedder):
 
 
     def forward_query(self, query):
-        query_embeddings = self.model.encode(self.add_eos(query), batch_size=1, prompt=self.query_prompt,
-                                        normalize_embeddings=True)
+        query_embeddings = self.model.encode(query, batch_size=1, prompt=self.query_prompt,
+                                        normalize_embeddings=True).tolist()
         return query_embeddings
 
 
@@ -61,7 +60,8 @@ class LlamaSentenceEmbedder(AbstractSentenceEmbedder):
     def __init__(self, llm_id, passage_prompt="", query_prompt="", **kwargs):
         super().__init__(llm_id, passage_prompt, query_prompt)
         self.model = LLMInterface(llm_id, **kwargs)
-        self.interested_layer = kwargs['interested_layers']
+        assert "layer" in kwargs, "cannot construct sentence embedder without layer"
+        self.interested_layer = kwargs['layer']
 
 
     def embedding_at_eos(self, text):
@@ -75,6 +75,4 @@ class LlamaSentenceEmbedder(AbstractSentenceEmbedder):
         return self.embedding_at_eos(passage)
 
     def forward_query(self, query):
-        query_embeddings = self.model.encode(self.add_eos(query), batch_size=1, prompt=self.query_prompt,
-                                             normalize_embeddings=True)
-        return query_embeddings
+        return self.embedding_at_eos(query).detach().cpu().tolist()

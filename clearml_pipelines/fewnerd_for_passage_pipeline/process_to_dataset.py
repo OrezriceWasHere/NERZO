@@ -1,20 +1,14 @@
 import json
-from uuid import uuid4
+import hashlib
+from dataclasses import asdict
+
 import torch
-from clearml import Task
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
+import clearml_poc
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from contrastive.args import Arguments, FineTuneLLM
-from llm_interface import LLMInterface
-
-# Connecting ClearML with the current process,
-# from here on everything is logged automatically
-Task.add_requirements("bitsandbytes",">=0.43.2")
-task = Task.init(project_name="fewnerd_pipeline",
-                 task_name="Pipeline step 2 jsonify dataset",
-                 reuse_last_task_id=False)
-
+from sentence_embedder import SentenceEmbedder
 
 
 def split_into_document(dataset_file):
@@ -54,18 +48,12 @@ def decide_word_tagging(tagging):
         return "O", "O"
     return tagging.split("-")
 
-def create_embedding(text, indices):
-    tokens = llm.tokenize(text).to(device)
-    llm_indices = llm.token_indices_given_text_indices(text, indices)
-    embeddings = {}
-    for model_layer, db_name  in layers_and_keys_pairs:
-        h = llm.get_llm_at_layer(tokens, model_layer)[0]
-        start = h[llm_indices[0] - 1]
-        end = h[llm_indices[1]]
-        embeddings[db_name] = {
-                "start": start.tolist(),
-                "end": end.tolist()
-       }
+def create_embedding(text):
+    embedding = llm.forward_passage(text).tolist()
+
+    embeddings = {
+        llm_id: embedding
+    }
 
     return embeddings
 
@@ -75,7 +63,6 @@ def process_document(document):
     prev_tagging = None
     full_text = ""
     tagging_array = []
-    text_id = str(uuid4())
     for line in document:
         word, tagging = line.split("\t")
         coarse_tag, fine_tag = decide_word_tagging(tagging)
@@ -104,14 +91,16 @@ def process_document(document):
         prev_tagging = tagging
         prev_word = word
 
-    for tagging in tagging_array:
-        tagging["all_text"] = full_text
-        tagging["text_id"] = text_id
-        assert tagging["all_text"][tagging["index_start"]:tagging["index_end"]] == tagging["phrase"]
-        embedding = create_embedding(full_text, (tagging["index_start"], tagging["index_end"]))
-        tagging["embedding"] = embedding
+    text_id =  str(hashlib.sha1(str.encode(full_text)).hexdigest())
 
-    return tagging_array
+    tagging_object = {
+        "all_text": full_text,
+        "text_id": text_id,
+        "tagging": tagging_array,
+        "embedding": create_embedding(full_text)
+    }
+
+    return tagging_object
 
 
 def process_dataset(dataset_url):
@@ -120,7 +109,7 @@ def process_dataset(dataset_url):
     processed_documents = []
     for document in tqdm(documents):
         processed_document = process_document(document)
-        processed_documents.extend(processed_document)
+        processed_documents.append(processed_document)
     return processed_documents
 
 
@@ -128,11 +117,11 @@ def main_process(dataset):
     file_dir = dataset["json"]
     with open(file_dir, "w") as file:
         processed_documents = process_dataset(dataset["url"])
-        tags = db_key + [dataset["env"]]
-        task.add_tags(tags)
+        tags = [llm_id] + [dataset["env"]]
+        clearml_poc.add_tags(tags)
 
         file.write(json.dumps(processed_documents))
-        clearml_dataset = Dataset.create(dataset_name=file_dir, dataset_project="fewnerd_pipeline")
+        clearml_dataset = Dataset.create(dataset_name=f'entire_setence_{file_dir}', dataset_project="fewnerd_pipeline")
         clearml_dataset.add_files(path=file_dir)
         clearml_dataset.add_tags(tags)
 
@@ -143,24 +132,19 @@ def main_process(dataset):
 
 if __name__ == "__main__":
 
+    clearml_poc.clearml_init(project_name="fewnerd_pipeline",
+                             task_name="prepare dataset",
+                             requirements=["sentence_transformers", "datasets", "einops"])
+
     args = Arguments()
-    task.connect(args, "general")
+    clearml_poc.clearml_connect_hyperparams(args, "general")
     llm_args = FineTuneLLM()
-    task.connect(llm_args, "llm_args")
+    clearml_poc.clearml_connect_hyperparams(llm_args, "llm_args")
 
     llm_id = llm_args.llm_id
-    interested_layers = ["model.layers.31"]
-    db_key = ["llama_3_entire_model"]
-    layers_and_keys_pairs = list(zip(interested_layers, db_key))
-    llm = LLMInterface(llm_id=llm_id,
-                       # interested_layers=list(interested_layers),
-                       max_llm_layer=llm_args.max_llm_layer)
+    llm = SentenceEmbedder(**asdict(llm_args))
     assert torch.cuda.is_available()
     device = torch.device("cuda")
 
     for dataset in fewnerd_dataset.datasets:
         main_process(dataset)
-
-
-print('Notice, artifacts are uploaded in the background')
-print('Done')

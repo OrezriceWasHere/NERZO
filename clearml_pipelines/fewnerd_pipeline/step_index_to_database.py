@@ -1,146 +1,43 @@
 import asyncio
 import os
 import hashlib
-
-import aiofiles
-import aiojson
 import ijson
 from clearml import Task, Dataset
-from elasticsearch import Elasticsearch, AsyncElasticsearch
-from tqdm.asyncio import  tqdm
+from elasticsearch import  AsyncElasticsearch
+from tqdm.asyncio import tqdm
 
+import runtime_args
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 import urllib3
+
+from contrastive.args import Arguments
+
 urllib3.disable_warnings()
 
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
+Task.add_requirements("aiohttp")
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 3 index to database",
+                 auto_connect_streams=False,
                  reuse_last_task_id=False)
 
 task.execute_remotely()
 
-hosts = os.environ.get("ELASTICSEARCH_HOSTS") or "http://dsicpu01:9200"
-user = os.environ.get("ELASTICSEARCH_USER") or "elastic"
-password = os.environ.get("ELASTICSEARCH_PASSWORD") or "XXX"
+mapping = fewnerd_dataset.elasticsearch_storage_mapping
 
-mapping = {
-    "mappings": {
-        "properties": {
-            "all_text": {
-                "type": "text"
-            },
-            "coarse_type": {
-                "type": "keyword"
-            },
-            "fine_type": {
-                "type": "keyword"
-            },
-            "index_end": {
-                "type": "integer"
-            },
-            "index_start": {
-                "type": "integer"
-            },
-            "phrase": {
-                "type": "text"
-            },
-            "text_id": {
-                "type": "keyword"
-            },
-            "doc_id": {
-                "type": "keyword"
-            },
-            "embedding": {
-                "type": "object",
-                "properties": {
-                    "llama_3_17_v_proj": {
-                        "type": "object",
-                        "properties": {
-                            "start": {
-                                "type": "dense_vector",
-                                "dims": 1024,
-                                "index": "false"
-                            },
-                            "end": {
-                                "type": "dense_vector",
-                                "dims": 1024,
-                                "index": "false"
-                            }
-                        }
-                    },
-                    "llama_3_entire_model": {
-                        "type": "object",
-                        "properties": {
-                            "start": {
-                                "type": "dense_vector",
-                                "dims": 4096,
-                                "index": "false"
-                            },
-                            "end": {
-                                "type": "dense_vector",
-                                "dims": 4096,
-                                "index": "false"
-                            }
-                        }
-                    },
-                    "llama_3_31_v_proj": {
-                        "type": "object",
-                        "properties": {
-                            "start": {
-                                "type": "dense_vector",
-                                "dims": 1024,
-                                "index": "false"
-                            },
-                            "end": {
-                                "type": "dense_vector",
-                                "dims": 1024,
-                                "index": "false"
-                            }
-                        }
-                    },
-                    "llama_3_3_13_k_proj": {
-                        "type": "object",
-                        "properties": {
-                            "start": {
-                                "type": "dense_vector",
-                                "dims": 1024,
-                                "index": "false"
-                            },
-                            "end": {
-                                "type": "dense_vector",
-                                "dims": 1024,
-                                "index": "false"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    },
-    "settings": {
-        "index": {
-            "max_inner_result_window": 1000000
-        }
-    }
-}
-
-es = AsyncElasticsearch(hosts=hosts,
-                   verify_certs=False,
-                    max_retries=10,
-                        request_timeout=30,
-                        retry_on_timeout=True,
-                   basic_auth=(user, password))
+es = AsyncElasticsearch(**runtime_args.ElasticsearchConnection().model_dump())
 
 
 async def ensure_existing_index(index_name, mapping):
     if not await es.indices.exists(index=index_name):
         await es.indices.create(index=index_name, body=mapping)
 
+
 def generate_id(item):
     keys = ["all_text", "coarse_type", "fine_type", "index_end", "index_start"]
     hash_v = hashlib.sha1(str.encode("".join([str(item[key]) for key in keys]))).hexdigest()
     return f"fnd_{hash_v}"
+
 
 async def write_to_index(data, index):
     data["doc_id"] = generate_id(data)
@@ -161,11 +58,12 @@ env_to_version_map = {
     "train": "1.0.3"
 }
 
-async def index_task(dataset):
 
+async def index_task(dataset):
     env = dataset["env"]
     # Load the artifact
     dataset_dir = Dataset.get(dataset_name=dataset["json"],
+                              dataset_tags=[dataset_tag_obj["dataset_tag"]],
                               # dataset_version=env_to_version_map[env],
                               dataset_project="fewnerd_pipeline").get_local_copy()
 
@@ -178,10 +76,6 @@ async def index_task(dataset):
             await write_to_index(document, index)
 
 
-
-print('Notice, artifacts are uploaded in the background')
-print('Done')
-
 async def main():
     tasks = [index_task(dataset) for dataset in fewnerd_dataset.datasets]
     await asyncio.gather(*tasks)
@@ -189,7 +83,9 @@ async def main():
 
 
 if __name__ == "__main__":
+    args = Arguments()
+    dataset_tag_obj = {"dataset_tag": args.llm_layer}
+    task.connect(dataset_tag_obj)
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
     loop.close()
-

@@ -14,3 +14,7 @@ matplotlib
 pandas
 peft
 ijson
+aiohttp
+sentence_transformers
+datasets
+einops

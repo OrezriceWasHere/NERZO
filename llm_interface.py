@@ -88,14 +88,15 @@ class LLMInterface:
                  interested_layers=None,
                  lora_config=None,
                  tokenizer_llm_id=None,
-                 max_llm_layer=None):
+                 max_llm_layer=None,
+                 **kwargs):
         tokenizer_llm_id = tokenizer_llm_id or llm_id
 
         print(f'LLM ID: {llm_id}')
         self.model, self.tokenizer = load_model_tokenizer(llm_id, tokenizer_llm_id, lora_config, max_llm_layer=max_llm_layer)
 
         self.extractable_parts = {}
-        self.interested_layers = interested_layers or []
+        self.interested_layers = interested_layers or kwargs.get("layer") or []
         self.register_hooks(self.model)
 
     def hook_fn(self, name):

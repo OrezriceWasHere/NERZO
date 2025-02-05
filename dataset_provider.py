@@ -1,4 +1,4 @@
-import os
+import aiohttp
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 import queries
 import runtime_args

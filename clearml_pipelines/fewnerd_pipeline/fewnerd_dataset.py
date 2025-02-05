@@ -223,3 +223,50 @@ elasticsearch_mapping_for_full_sentence = {
         }
     }
 }
+
+elasticsearch_fine_type_to_embedding = {
+    "mappings": {
+        "properties": {
+            "entity_id": {
+                "type": "keyword"
+            },
+            "entity_name": {
+                "type": "keyword"
+            },
+            "entity_description": {
+                "type": "keyword"
+            },
+            "llm_layer": {
+                "type": "keyword"
+            },
+            "embedding": {
+                "type": "object"
+            }
+        }
+    },
+    "settings": {
+        "index": {
+            "max_inner_result_window": 1000000
+        }
+    }
+}
+
+
+def llm_and_layer_to_elastic_name(llm_id, layer=None):
+    if layer is None:
+        layer = "last"
+    return f'{llm_id}@{layer}'.replace(".", "-").lower()
+
+
+def schema_llm_layer(size, layer_name):
+    return {
+        layer_name: {
+            "type": "dense_vector",
+            "dims": size,
+            "index": "true",
+            "similarity": "cosine",
+            "index_options": {
+                "type": "flat"
+            }
+        }
+    }

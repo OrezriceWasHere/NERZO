@@ -14,9 +14,11 @@ class Arguments:
     batch_size: int = 20
     instances_per_type: int = 300
 
-    llm_layer: str = "llama_3_entire_model"
+    llm_layer: str = "llama_3_17_v_proj"
 
     input_tokens: str = "end"  # [possible_values: "end", "start_end_pair", "diff"]
+    entity_name_embeddings: str = "avg"
+
     fine_tune_llm: bool = False
     disable_similarity_training: bool = False
 
@@ -44,9 +46,16 @@ def dataclass_decoder(dct: dict, cls: Type[Any]) -> Any:
     field_types = {field.name: field.type for field in fields(cls)}
     return cls(**{key: convert_value(value, field_types[key]) for key, value in dct.items() if key in field_types})
 
+# @dataclass
+# class FineTuneLLM:
+#     llm_id: str = 'intfloat/e5-mistral-7b-instruct'
+#     layer: str = "model.layers.17.self_attn.v_proj"
+#     mlp_head_model_id_from_clearml: str = "a18145c711b046cbb9fbb86e38ac3e47"
+#     max_llm_layer: Optional[int] = 18
+
 @dataclass
 class FineTuneLLM:
-    llm_id: str = 'intfloat/e5-mistral-7b-instruct'
+    llm_id: str = "meta-llama/Meta-Llama-3.1-8B"
     layer: str = "model.layers.17.self_attn.v_proj"
-    mlp_head_model_id_from_clearml: str = "a18145c711b046cbb9fbb86e38ac3e47"
+    mlp_head_model_id_from_clearml: str = "df186502700540649bfc012cb7f0a3a6"
     max_llm_layer: Optional[int] = 18

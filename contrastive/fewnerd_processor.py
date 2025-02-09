@@ -241,3 +241,25 @@ def retrieve_anchors_for_sentence_test():
             "election": ["b8c476aece2e1ca1f9ecf277b7edab05d85fb6ce", "3bb6af6478d4e7da31e0e5c99ba1b081ea5f255b",
                          "9132ff2b0b38f51e88648ae162f0119a6363237c"]}
 
+
+def load_entity_name_embeddings(layer_name, entity_name_strategy) -> dict[str, torch.Tensor]:
+    index = "fewnerd_entity_name_to_embedding"
+    elastic_field = f'embedding.{layer_name}.{entity_name_strategy}'
+    elastic_query = {
+        "query": {
+            "match_all": {}
+        },
+        "size": 100,
+        "_source": [
+            "entity_name",
+            elastic_field,
+        ]
+    }
+
+    replies = dataset_provider.search(elastic_query, index=index)
+    layer_to_tensor = {
+        item["_source"]["entity_name"]: torch.Tensor(item["_source"][elastic_field])
+        for item in replies['hits']['hits']
+    }
+    return layer_to_tensor
+

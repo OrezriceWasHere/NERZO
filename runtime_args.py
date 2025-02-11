@@ -17,7 +17,7 @@ def get_env(key, default_value=None):
 
 @dataclass
 class RuntimeArgs:
-    compute_queue: str = "a100_gpu"
+    compute_queue: str = "dsicsgpu"
     debug_llm: bool = False
     max_llm_layer: Optional[int] = None
     upload_all_predictions: bool = False

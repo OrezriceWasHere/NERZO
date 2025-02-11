@@ -29,7 +29,8 @@ async def yield_dataset(anchor_type, dataset_types, batch_size=50,
         coarse_type = anchor["_source"]["coarse_type"]
         text = anchor["_source"]["all_text"]
         good_batch = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(result_type,
-                                                                                   batch_size=batch_size,
+                                                                                   # batch_size=batch_size,
+                                                                                   batch_size=1,
                                                                                    llm_layer=llm_layer)
         other_types = list(set(dataset_types) - {result_type})
 

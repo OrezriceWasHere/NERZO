@@ -18,3 +18,4 @@ aiohttp
 sentence_transformers
 datasets
 einops
+info-nce-pytorch

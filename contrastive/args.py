@@ -27,10 +27,10 @@ class Arguments:
     triplet_loss_margin: float = 0.5
     activation: str = "silu"
     noise: str = "dropout"
-    dropout: float = 0.00
-    epochs: int = 300
+    dropout: float = 0.1
+    epochs: int = 120
     enable_gate: bool = True
-    loss_fn: str = "dpr_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss", triplet_contrastive_loss
+    loss_fn: str = "triplet_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss", triplet_contrastive_loss
 
 def convert_value(value: Any, target_type: Type) -> Any:
     """Converts a value to the specified target type with special handling for bool."""

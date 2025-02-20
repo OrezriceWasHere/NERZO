@@ -1,5 +1,7 @@
+import json
+
 import math
-from functools import partial
+from functools import partial, cache
 import dataset_provider
 import torch
 from sklearn.metrics import accuracy_score
@@ -10,7 +12,11 @@ import numpy as np
 async def yield_dataset(anchor_type, dataset_types, batch_size=50,
                         instances_per_type=100,
                         hard_negative_ratio=0,
+                        similarity_strategy='instance',
                         llm_layer=None):
+
+    assert similarity_strategy in ('instance', 'type')
+
     extract = extract_entities_from_es_response
 
     batches = [
@@ -20,21 +26,29 @@ async def yield_dataset(anchor_type, dataset_types, batch_size=50,
     batch_sizes = [end - start for start, end in batches]
 
     for batch_size in batch_sizes:
-        anchor = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(anchor_type,
-                                                                               batch_size=1,
-                                                                               llm_layer=llm_layer)
-        assert len(anchor) == 1
-        anchor = anchor[0]
-        result_type = anchor["_source"]["fine_type"]
-        coarse_type = anchor["_source"]["coarse_type"]
-        text = anchor["_source"]["all_text"]
-        good_batch = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(result_type,
-                                                                                   # batch_size=batch_size,
+        if similarity_strategy == 'instance':
+            anchor = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(anchor_type,
                                                                                    batch_size=1,
+                                                                                   llm_layer=llm_layer)
+            assert len(anchor) == 1
+            anchor = anchor[0]
+            coarse_type = anchor["_source"]["coarse_type"]
+            text = anchor["_source"]["all_text"]
+            anchor = anchor["_source"]
+
+
+        else:
+            anchor = type_to_name()[anchor_type]
+            coarse_type = None
+            text = anchor
+
+        result_type = anchor_type
+        good_batch = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(result_type,
+                                                                                   batch_size=batch_size,
+                                                                                   # batch_size=1,
                                                                                    llm_layer=llm_layer)
         other_types = list(set(dataset_types) - {result_type})
 
-        anchor = anchor["_source"]
         chunked_good_batch = extract(good_batch)
         chunked_bad_batch = await negative_examples(
             coarse_type=coarse_type,
@@ -45,6 +59,11 @@ async def yield_dataset(anchor_type, dataset_types, batch_size=50,
             hard_negative_ratio=hard_negative_ratio
         )
         yield anchor, chunked_good_batch, chunked_bad_batch
+
+@cache
+def type_to_name() -> dict[str, str]:
+    return json.load(open("clearml_pipelines/entity_name_to_embedding/entities_to_names.json"))
+
 
 
 async def negative_examples(

@@ -275,15 +275,23 @@ def query_get_by_coarse_grained_fewnerd(coarse_grained_type: str) -> dict:
 
 
 def query_hard_negative(fine_grained_type: str | list[str],
-                        coarse_grained_type: str,
+                        coarse_grained_type: str | None,
                         anchor_text: str,
                         size: int,
                         llm_layer=None) -> dict:
     assert isinstance(fine_grained_type, list) or isinstance(fine_grained_type,
                                                              str), "fine_grained_type should be a string or a list of strings"
-    assert isinstance(coarse_grained_type, str), "coarse_grained_type should be a string"
+#    assert isinstance(coarse_grained_type, str), "coarse_grained_type should be a string"
     assert isinstance(anchor_text, str), "term_to_be_closed_to should be a string"
     fine_grained_type = fine_grained_type if isinstance(fine_grained_type, list) else [fine_grained_type]
+    coarse_grained_query = {"match_all": {}} if not coarse_grained_type else {
+                        "term": {
+                            "coarse_type": {
+                                "value": coarse_grained_type,
+                                "boost": 5
+                            }
+                        }
+                    }
     query = {
         "query": {
             "bool": {
@@ -305,14 +313,7 @@ def query_hard_negative(fine_grained_type: str | list[str],
                             "min_doc_freq": 1
                         }
                     },
-                    {
-                        "term": {
-                            "coarse_type": {
-                                "value": coarse_grained_type,
-                                "boost": 5
-                            }
-                        }
-                    }
+                    coarse_grained_query
                 ]
             }
         },

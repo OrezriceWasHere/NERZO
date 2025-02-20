@@ -1,10 +1,9 @@
 from dataclasses import asdict
 from typing import Optional
-
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from clearml.automation.controller import PipelineDecorator
 from clearml import TaskTypes
-
+from contrastive import fewnerd_processor
 from contrastive.args import FineTuneLLM
 
 
@@ -29,7 +28,7 @@ def step_create_embedding(llm_id: str,
     llm = LLMInterface(llm_id=llm_id,
                        interested_layers=layer,
                        max_llm_layer=max_llm_layer)
-    entities_to_names: dict[str, str] = json.load(open("clearml_pipelines/entity_name_to_embedding/entities_to_names.json"))
+    entities_to_names: dict[str, str] = fewnerd_processor.type_to_name()
     entity_names = list(entities_to_names.values())
     entities = list(entities_to_names.keys())
     tokens = llm.tokenize(entity_names).to(device)

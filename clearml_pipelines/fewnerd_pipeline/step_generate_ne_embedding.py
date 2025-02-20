@@ -1,9 +1,11 @@
 import asyncio
 import torch
 import tqdm
-from clearml import Task, Model
+from clearml import Task
 from elasticsearch import AsyncElasticsearch
 import urllib3
+
+import clearml_helper
 import contrastive.fewnerd_processor
 import queries
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
@@ -21,7 +23,8 @@ task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 4 cal
                  reuse_last_task_id=False)
 task.add_requirements("requirements.txt")
 
-task.execute_remotely()
+if RuntimeArgs.running_remote:
+    task.execute_remotely()
 
 
 async def iterate_over_dataset(index, coarse_types):
@@ -136,28 +139,17 @@ if __name__ == "__main__":
 
     fewnerd_schema = fewnerd_dataset.elasticsearch_tests_mapping
     original_keys = list(fewnerd_schema["mappings"]["properties"]["embedding"]["properties"].keys())
-    mlp_layer = {"layer_id": "df02c6c7ff074c3387f663d79bb671f8"}
+    mlp_layer = {"layer_id": "de8cbfe796714725930af567f488230f"}
     task.connect(mlp_layer, name="layer_name")
     mlp_id = mlp_layer["layer_id"]
     indexing_original_llm_tokens = mlp_id in original_keys
     write_index = "fewnerd_tests"
+    args = Arguments()
     if indexing_original_llm_tokens:
         similarity_model = torch.nn.Identity()
-        args = Arguments()
         args.llm_layer = mlp_id
     else:
-        model = Model(mlp_id)
-        assert model
-        args_of_task = Task.get_task(model.task).get_parameters(cast=False)
-        args_dict = {key.replace("general/", ""): value for key, value in args_of_task.items() if "general" in key}
-        args:Arguments = dataclass_decoder(dct=args_dict, cls=Arguments)
-        local_mlp_head_path = model.get_local_copy(raise_on_error=True)
-        similarity_model = ContrastiveMLP(args).to(device)
-        assert local_mlp_head_path, "could not download mlp head model"
-        local_mlp_head_model = torch.load(local_mlp_head_path,
-                                          weights_only=True,
-                                          map_location=device)
-        similarity_model.load_state_dict(local_mlp_head_model)
+        similarity_model = clearml_helper.get_mlp_by_id(mlp_id, device=device)
         similarity_model.eval()
 
     es_conf = ElasticsearchConnection().model_dump()

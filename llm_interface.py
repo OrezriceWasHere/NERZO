@@ -119,7 +119,7 @@ class LLMInterface:
                 module.register_forward_hook(self.hook_fn(name))
 
     def tokenize(self, prompt: str | list[str]) -> torch.Tensor:
-        return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048)
 
     def tokens_indices_part_of_sentence(self, sentence, part_of_sentence):
         """

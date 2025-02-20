@@ -72,7 +72,7 @@ async def get_randomized_by_fine_type_fewnerd_v4(fine_grained_type: str, batch_s
     return response
 
 async def get_hard_negative_fewnerd(fine_types: str | list[str],
-                              coarse_type: str | list[str],
+                              coarse_type: str | list[str] | None,
                               anchor_text:str,
                               batch_size: int,
                               llm_layer:str=None):

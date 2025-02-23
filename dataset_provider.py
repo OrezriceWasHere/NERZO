@@ -1,4 +1,3 @@
-import aiohttp
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 import queries
 import runtime_args
@@ -168,6 +167,9 @@ async def upsert(data,doc_id, index):
     }
     response = await async_es.update(index=index, id=doc_id, body=body)
     return response
+
+async def bulk(batch):
+    return await async_es.bulk(body=batch)
 
 async def ensure_field(index_name, field_mapping):
     await async_es.indices.put_mapping(index=index_name, properties=field_mapping)

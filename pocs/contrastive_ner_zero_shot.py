@@ -1,9 +1,7 @@
 import asyncio
 import json
-import random
 from collections import defaultdict
 from functools import partial
-
 import math
 import pandas as pd
 import clearml_poc
@@ -22,6 +20,7 @@ def main():
 	for e in trange(mlp_args.epochs):
 		train(e)
 		evaluate(e)
+		upload_models()
 
 
 def avg(l):
@@ -38,28 +37,49 @@ def tensorify(*document_items):
 			documents=document_item if isinstance(document_item, list) else [document_item]
 		)
 
+def upload_models():
+    global max_benchmark, current_benchmark, instances_model, instances_model_clearml
+    if math.isclose(current_benchmark, max_benchmark):
+        print(f"recognized better benchmark value {max_benchmark}. Uploading model")
 
-async def iterate_over_train(fine_type):
+        torch.save(instances_model.state_dict(), f"instances_model.pt")
+        clearml_poc.upload_model_to_clearml(instances_model_clearml, "instances_model.pt")
+        clearml_poc.add_tags([str(instances_model_clearml.id)])
+
+
+async def iterate_over_train(fine_type, similarity_strategy):
 	async for anchor, same_type, different_type in fewnerd_processor.yield_train_dataset(
 			anchor_type=fine_type,
 			batch_size=mlp_args.batch_size,
 			instances_per_type=mlp_args.instances_per_type,
 			hard_negative_ratio=mlp_args.hard_negative_ratio,
-			llm_layer=mlp_args.llm_layer
+			llm_layer=mlp_args.llm_layer,
+			similarity_strategy=similarity_strategy
 	):
-		anchor, good_batch, bad_batch = tensorify(anchor, same_type, different_type)
+		good_batch, bad_batch = tensorify(same_type, different_type)
+		if similarity_strategy == 'instance':
+			anchor = next(tensorify(anchor))
 		yield anchor, good_batch, bad_batch
 
 
 async def one_type_epoch_training(fine_type, epoch):
 	results = defaultdict(list)
-	async for anchor, good_batch, bad_batch in iterate_over_train(fine_type):
+	async for anchor, good_batch, bad_batch in iterate_over_train(fine_type, similarity_strategy='instance'):
 		instances_optimizer.zero_grad()
 		types_optimizer.zero_grad()
-		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch)
+		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
 
 		for metric, value in similarity(instances_model, anchor=anchor).items():
 			results[f'instances_{metric}'].extend(value)
+
+		instances_optimizer.step()
+		types_optimizer.step()
+
+	async for anchor, good_batch, bad_batch in iterate_over_train(fine_type, similarity_strategy='type'):
+		instances_optimizer.zero_grad()
+		types_optimizer.zero_grad()
+		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
+
 		for metric, value in similarity(types_model, anchor=layer_to_tensor_train[fine_type]).items():
 			results[f'types_{metric}'].extend(value)
 
@@ -73,7 +93,8 @@ def compute_similarity_base(
 		model,
 		anchor,
 		positive_examples,
-		negative_examples
+		negative_examples,
+		epoch
 ):
 	anchor = torch.atleast_2d(anchor)
 	good_similarities = []
@@ -83,7 +104,7 @@ def compute_similarity_base(
 	anchor = model(anchor)
 	positive_examples = instances_model(positive_examples)
 	negative_examples = instances_model(negative_examples)
-	loss = similarity_criterion(anchor, positive_examples, negative_examples)
+	loss = similarity_criterion(anchor, positive_examples, negative_examples, epoch=epoch)
 	loss.backward()
 
 	losses.append(loss.item())
@@ -117,34 +138,42 @@ def train(epoch):
 	log_training_metrics(epoch, series="train", **results)
 
 
-async def iterate_over_test(fine_type):
+async def iterate_over_test(fine_type, similarity_strategy):
 	async for anchor, same_type, different_type in fewnerd_processor.yield_test_dataset(
 			anchor_type=fine_type,
 			batch_size=mlp_args.batch_size,
 			instances_per_type=mlp_args.instances_per_type,
-			llm_layer=mlp_args.llm_layer
+			llm_layer=mlp_args.llm_layer,
+			similarity_strategy=similarity_strategy
 	):
-		anchor, good_batch, bad_batch = tensorify(anchor, same_type, different_type)
+		good_batch, bad_batch = tensorify(same_type, different_type)
+		if similarity_strategy == 'instance':
+			anchor = next(tensorify(anchor))
 		yield anchor, good_batch, bad_batch
 
 
-async def one_type_epoch_evaluation(fine_type):
+async def one_type_epoch_evaluation(fine_type, epoch):
 	results = defaultdict(list)
-	async for anchor, good_batch, bad_batch in iterate_over_test(fine_type):
-		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch)
+	async for anchor, good_batch, bad_batch in iterate_over_test(fine_type, similarity_strategy='instance'):
+		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
 		prediction = partial(eval_predict, good_batch=good_batch, bad_batch=bad_batch)
 
 		for metric, value in similarity(instances_model, anchor=anchor).items():
 			results[f'instances_{metric}'].extend(value)
 
-		for metric, value in similarity(types_model, anchor=layer_to_tensor_test[fine_type]).items():
-			results[f'types_{metric}'].extend(value)
-
 		for metric, value in prediction(instances_model, anchor=anchor).items():
 			results[f'instances_{metric}'].extend(value)
 
+	async for anchor, good_batch, bad_batch in iterate_over_test(fine_type, similarity_strategy='type'):
+		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
+		prediction = partial(eval_predict, good_batch=good_batch, bad_batch=bad_batch)
+
+		for metric, value in similarity(types_model, anchor=layer_to_tensor_test[fine_type]).items():
+			results[f'types_{metric}'].extend(value)
+
 		for metric, value in prediction(types_model, anchor=layer_to_tensor_test[fine_type]).items():
 			results[f'types_{metric}'].extend(value)
+
 
 	return results
 
@@ -171,7 +200,7 @@ def evaluate(epoch):
 	auc_threshold_graph = defaultdict(list)
 
 	all_test_types = fewnerd_processor.test_fine_types()
-	tasks = [one_type_epoch_evaluation(fine_type) for fine_type in all_test_types]
+	tasks = [one_type_epoch_evaluation(fine_type, epoch) for fine_type in all_test_types]
 	loop = asyncio.get_event_loop()
 	results = loop.run_until_complete(asyncio.gather(*tasks))
 	for fine_type, result in zip(all_test_types, results):
@@ -237,16 +266,13 @@ if __name__ == "__main__":
 	print('args are: ', json.dumps(mlp_args.__dict__, indent=4))
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+	model = ContrastiveMLP(mlp_args).to(device)
+
 	similarity_criterion = ContrastiveLoss(loss_fn=mlp_args.loss_fn, margin=mlp_args.triplet_loss_margin)
 	instances_model_clearml = clearml_poc.generate_tracked_model(name="instances_model", framework="PyTorch")
-	instances_model = ContrastiveMLP(mlp_args).to(device)
-	types_model = ContrastiveMLP(mlp_args).to(device)
+	instances_model = model
+	types_model = model
 
-	# optimizer = torch.optim.Adam(
-	# 	list(instances_model.parameters()) +
-	# 	list(types_model.parameters()),
-	# 	lr=mlp_args.lr
-	# )
 
 	instances_optimizer = torch.optim.Adam(instances_model.parameters(), lr=mlp_args.lr)
 	types_optimizer = torch.optim.Adam(types_model.parameters(), lr=mlp_args.lr)

@@ -1,4 +1,3 @@
-import asyncio
 import os
 import hashlib
 import ijson
@@ -7,7 +6,6 @@ from tqdm.asyncio import tqdm
 import clearml_poc
 import urllib3
 import asyncio
-from threading import Thread
 import dataset_provider
 from clearml_pipelines.nertreieve_dataset import neretrieve_dataset
 from contrastive.args import Arguments
@@ -31,12 +29,34 @@ def generate_id(item):
 
 async def write_to_elastic_worker(queue):
     pbar = tqdm()
+    batch = []
     while True:
         record, index = await queue.get()
         if record is None:
             break
-        await write_to_index(record, index)
-        pbar.update(1)
+        batch.append((record, index))
+        if len(batch) == BATCH_SIZE:
+            await write_batch(batch)
+            batch = []
+        pbar.update(len(batch))
+    if batch:
+        await write_batch(batch)
+
+
+async def write_batch(bulk):
+    batch = []
+    for record, index in bulk:
+        doc_id = generate_id(record)
+        batch.append({"update": {"_index": index, "_id": doc_id}})
+        batch.append({"doc": {**record}, "doc_as_upsert": True})
+        # batch.append({
+        #     '_id': doc_id,
+        #     '_op_type': 'update',
+        #     '_index': index,
+        #     'doc': {**record, "doc_id": doc_id},
+        # })
+    x = await dataset_provider.bulk(batch)
+    pass
 
 async def write_to_index(data, index):
     data["doc_id"] = generate_id(data)
@@ -60,7 +80,7 @@ async def load_json_task(dataset):
     await dataset_provider.ensure_existing_index(index, mapping)
 
     with open(os.path.join(dataset_dir, dataset["json"])) as file:
-        for document in ijson.items(file, "item"):
+        for document in ijson.items(file, "item", use_float=True):
             await queue.put((document, index))
 
 async def main():
@@ -77,6 +97,8 @@ if __name__ == "__main__":
         task_name="Pipeline step 3 index to database",
         requirements=["aiohttp"]
     )
+
+    BATCH_SIZE = 1024
     args = Arguments()
     dataset_tag_obj = {"dataset_tag": args.llm_layer}
     clearml_poc.clearml_connect_hyperparams(dataset_tag_obj)

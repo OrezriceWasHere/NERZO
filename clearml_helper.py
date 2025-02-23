@@ -22,3 +22,10 @@ def get_mlp_by_id(mlp_id: str, device=None) -> ContrastiveMLP:
 		)
 	similarity_model.load_state_dict(local_mlp_head_model)
 	return similarity_model
+
+def get_args_by_mlp_id(mlp_id: str) -> Arguments:
+	model = Model(mlp_id)
+	args_of_task = Task.get_task(model.task).get_parameters(cast=False)
+	args_dict = {key.replace("general/", ""): value for key, value in args_of_task.items() if "general" in key}
+	args: Arguments = dataclass_decoder(dct=args_dict, cls=Arguments)
+	return args

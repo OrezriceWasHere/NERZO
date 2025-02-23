@@ -147,6 +147,7 @@ def all_source_except_other_embedding(llm_layer):
         "all_text",
         "coarse_type",
         "fine_type",
+        "entity_type",
         "doc_id",
         "text_id",
         "phrase",

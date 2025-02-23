@@ -97,6 +97,7 @@ class LLMInterface:
 
         self.extractable_parts = {}
         self.interested_layers = interested_layers or kwargs.get("layer") or []
+        self.max_tokens_offset = 4096
         self.register_hooks(self.model)
 
     def hook_fn(self, name):
@@ -119,7 +120,7 @@ class LLMInterface:
                 module.register_forward_hook(self.hook_fn(name))
 
     def tokenize(self, prompt: str | list[str]) -> torch.Tensor:
-        return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=2048)
+        return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=self.max_tokens_offset)
 
     def tokens_indices_part_of_sentence(self, sentence, part_of_sentence):
         """
@@ -189,7 +190,7 @@ class LLMInterface:
         #
         # Tokenize the sentence and get word-to-token mappings (word_ids)
         # tokens = self.tokenizer.tokenize(sentence)
-        encoding = self.tokenizer(sentence, return_offsets_mapping=True)
+        encoding = self.tokenizer(sentence, return_offsets_mapping=True, max_length=self.max_tokens_offset)
 
         # Get the offsets for each token (start, end positions in original sentence)
         offsets = encoding['offset_mapping']

@@ -22,6 +22,9 @@ elasticsearch_storage_mapping = {
 				"type": "text",
 				"term_vector": "yes"
 			},
+			"doc_id": {
+				"type": "keyword"
+			},
 			"entity_type": {
 				"type": "keyword"
 			},
@@ -39,42 +42,98 @@ elasticsearch_storage_mapping = {
 				"type": "object",
 				"properties": {
 					"llama_3_17_v_proj": {
-						"type": "dense_vector",
-						"dims": 1024,
-						"index": "true",
-						"similarity": "cosine",
-						"index_options": {
-							"type": "flat"
+						"type": "object",
+						"properties": {
+							"end": {
+								"type": "dense_vector",
+								"dims": 1024,
+								"index": "true",
+								"similarity": "cosine",
+								"index_options": {
+									"type": "flat"
+								}
+							},
+							"start": {
+								"type": "dense_vector",
+								"dims": 1024,
+								"index": "true",
+								"similarity": "cosine",
+								"index_options": {
+									"type": "flat"
+								}
+							}
 						}
 
 					},
 					"llama_3_entire_model": {
-						"type": "dense_vector",
-						"dims": 4096,
-						"index": "true",
-						"similarity": "cosine",
-						"index_options": {
-							"type": "flat"
+						"type": "object",
+						"properties": {
+							"end": {
+								"type": "dense_vector",
+								"dims": 4096,
+								"index": "true",
+								"similarity": "cosine",
+								"index_options": {
+									"type": "flat"
+								}
+							},
+							"start": {
+								"type": "dense_vector",
+								"dims": 4096,
+								"index": "true",
+								"similarity": "cosine",
+								"index_options": {
+									"type": "flat"
+								}
+							}
 						}
 
 					},
 					"llama_3_31_v_proj": {
-						"type": "dense_vector",
-						"dims": 1024,
-						"index": "true",
-						"similarity": "cosine",
-						"index_options": {
-							"type": "flat"
+						"type": "object",
+						"properties": {
+							"end": {
+								"type": "dense_vector",
+								"dims": 1024,
+								"index": "true",
+								"similarity": "cosine",
+								"index_options": {
+									"type": "flat"
+								}
+							},
+							"start": {
+								"type": "dense_vector",
+								"dims": 1024,
+								"index": "true",
+								"similarity": "cosine",
+								"index_options": {
+									"type": "flat"
+								}
+							}
 						}
 
 					},
 					"llama_3_3_13_k_proj": {
-						"type": "dense_vector",
-						"dims": 1024,
-						"index": "true",
-						"similarity": "cosine",
-						"index_options": {
-							"type": "flat"
+						"type": "object",
+						"properties": {
+							"end": {
+								"type": "dense_vector",
+								"dims": 1024,
+								"index": "true",
+								"similarity": "cosine",
+								"index_options": {
+									"type": "flat"
+								}
+							},
+							"start": {
+								"type": "dense_vector",
+								"dims": 1024,
+								"index": "true",
+								"similarity": "cosine",
+								"index_options": {
+									"type": "flat"
+								}
+							}
 						}
 					}
 				}
@@ -87,3 +146,4 @@ elasticsearch_storage_mapping = {
 		}
 	}
 }
+

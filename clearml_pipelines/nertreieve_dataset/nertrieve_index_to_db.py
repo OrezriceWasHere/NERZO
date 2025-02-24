@@ -20,10 +20,8 @@ mapping = neretrieve_dataset.elasticsearch_storage_mapping
 
 
 
-
-
 def generate_id(item):
-    keys = ["all_text", "text_id", "phrase", "entity_type", "entity_id"]
+    keys = ["text_id", "phrase", "entity_type", "entity_id" , "index_start", "index_end"]
     hash_v = hashlib.sha1(str.encode("".join([str(item[key]) for key in keys]))).hexdigest()
     return f"nert_{hash_v}"
 
@@ -38,7 +36,7 @@ async def write_to_elastic_worker(queue):
         if len(batch) == BATCH_SIZE:
             await write_batch(batch)
             batch = []
-        pbar.update(len(batch))
+            pbar.update(BATCH_SIZE)
     if batch:
         await write_batch(batch)
 
@@ -48,13 +46,7 @@ async def write_batch(bulk):
     for record, index in bulk:
         doc_id = generate_id(record)
         batch.append({"update": {"_index": index, "_id": doc_id}})
-        batch.append({"doc": {**record}, "doc_as_upsert": True})
-        # batch.append({
-        #     '_id': doc_id,
-        #     '_op_type': 'update',
-        #     '_index': index,
-        #     'doc': {**record, "doc_id": doc_id},
-        # })
+        batch.append({"doc": {**record, "doc_id": doc_id}, "doc_as_upsert": True})
     x = await dataset_provider.bulk(batch)
     pass
 
@@ -79,9 +71,12 @@ async def load_json_task(dataset):
     index = f"nertrieve_{env}"
     await dataset_provider.ensure_existing_index(index, mapping)
 
+
     with open(os.path.join(dataset_dir, dataset["json"])) as file:
         for document in ijson.items(file, "item", use_float=True):
             await queue.put((document, index))
+
+    await queue.put((None, index))
 
 async def main():
     await asyncio.gather(
@@ -95,10 +90,11 @@ if __name__ == "__main__":
     clearml_poc.clearml_init(
         project_name="neretrieve_pipeline",
         task_name="Pipeline step 3 index to database",
-        requirements=["aiohttp"]
+        requirements=["aiohttp"],
+        queue_name='a100_gpu'
     )
 
-    BATCH_SIZE = 1024
+    BATCH_SIZE = 2048
     args = Arguments()
     dataset_tag_obj = {"dataset_tag": args.llm_layer}
     clearml_poc.clearml_connect_hyperparams(dataset_tag_obj)
@@ -106,8 +102,5 @@ if __name__ == "__main__":
 
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
-
-
-
 
     loop.close()

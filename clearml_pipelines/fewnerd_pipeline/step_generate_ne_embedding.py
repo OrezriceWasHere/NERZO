@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
     fewnerd_schema = fewnerd_dataset.elasticsearch_tests_mapping
     original_keys = list(fewnerd_schema["mappings"]["properties"]["embedding"]["properties"].keys())
-    mlp_layer = {"layer_id": "de8cbfe796714725930af567f488230f"}
+    mlp_layer = {"layer_id": "1523129bcea64c129ebab77db4880270"}
     task.connect(mlp_layer, name="layer_name")
     mlp_id = mlp_layer["layer_id"]
     indexing_original_llm_tokens = mlp_id in original_keys
@@ -150,6 +150,7 @@ if __name__ == "__main__":
         args.llm_layer = mlp_id
     else:
         similarity_model = clearml_helper.get_mlp_by_id(mlp_id, device=device)
+        args = clearml_helper.get_args_by_mlp_id(mlp_id)
         similarity_model.eval()
 
     es_conf = ElasticsearchConnection().model_dump()

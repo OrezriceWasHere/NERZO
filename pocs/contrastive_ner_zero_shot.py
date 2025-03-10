@@ -21,7 +21,7 @@ from sklearn import metrics
 def main():
 	for e in trange(mlp_args.epochs):
 		train(e)
-		# evaluate(e)
+		evaluate(e)
 		upload_models(e)
 
 

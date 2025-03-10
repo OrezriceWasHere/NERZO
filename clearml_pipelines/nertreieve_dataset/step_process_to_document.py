@@ -1,13 +1,11 @@
+import asyncio
 import json
-from uuid import uuid4
+import aiofiles
 import torch
-from clearml import Task
 from tqdm import tqdm
 from clearml import StorageManager, Dataset
 from bz2 import decompress
-
 import clearml_poc
-from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from clearml_pipelines.nertreieve_dataset import neretrieve_dataset
 from contrastive.args import Arguments, FineTuneLLM
 from llm_interface import LLMInterface
@@ -16,13 +14,15 @@ from llm_interface import LLMInterface
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
 
-def split_into_document(dataset_file):
+async def split_into_document(dataset_file, queue):
 	pbar = tqdm()
-	with open(dataset_file, "r") as f:
+	async with aiofiles.open(dataset_file, "r") as f:
 		# For document in file
-		for line in f:
+		async for line in f:
 			pbar.update(1)
-			yield json.loads(line)
+			doc = json.loads(line)
+			await queue.put(doc)
+	await queue.put(None)
 
 
 def create_embedding(text, indices):
@@ -43,10 +43,9 @@ def create_embedding(text, indices):
 
 def add_embedding_to_batch(batch):
 	all_texts = [x["all_text"] for x in batch]
-	distinct_text = set(all_texts)
-	distinct_text_list = list(distinct_text)
-	tokens = llm.tokenize(distinct_text_list).to(device)
-	assert len(layers_and_keys_pairs), "supporting one layer at a time right now"
+	distinct_text = list(set(all_texts))
+	tokens = llm.tokenize(distinct_text).to(device)
+	assert len(layers_and_keys_pairs) == 1, "supporting one layer at a time right now"
 	layers_and_keys_pair = layers_and_keys_pairs[0]
 	hidden_values = llm.get_llm_at_layer(tokens, layers_and_keys_pair[0])
 	db_name = layers_and_keys_pair[1]
@@ -111,40 +110,54 @@ def process_batch(batch):
 
 	return docs
 
+async def write_to_file(queue, output_file):
 
-def process_dataset(dataset_url, output_file):
-	dataset_file = StorageManager.get_local_copy(remote_url=dataset_url)
-	print("unzipping dataset...")
-	source_file = dataset_file
-	uncompressed_file = dataset_file[:-4]
-	with open(source_file, 'rb') as source, open(uncompressed_file, 'w') as dest:
-		dest.write(decompress(source.read()).decode('utf-8'))
-	print("processing dataset...")
-	documents = split_into_document(uncompressed_file)
-	processed_documents = []
-	with open(output_file, "w") as file:
+	async with aiofiles.open(output_file, "w") as file:
 		batch = []
+		while True:
 
-		for document in documents:
+			document = await queue.get()
+			if not document:
+				break
 			if len(batch) < BATCH_SIZE:
 				batch.append(document)
 				continue
 			else:
 				processed_documents = process_batch(batch)
 				for document in processed_documents:
-					file.write(json.dumps(document))
+					await file.write(json.dumps(document))
+					await file.write("\n")
 				batch = []
 		if batch:
 			processed_documents = process_batch(batch)
 			for document in processed_documents:
-				file.write(json.dumps(document)+"\n")
-	return processed_documents
+				await file.write(json.dumps(document)+"\n")
 
 
-def main_process(dataset):
+
+async def process_dataset(dataset_url, output_file):
+	dataset_file = StorageManager.get_local_copy(remote_url=dataset_url)
+
+	print("unzipping dataset...")
+	source_file = dataset_file
+	uncompressed_file = dataset_file[:-4]
+	with open(source_file, 'rb') as source, open(uncompressed_file, 'w') as dest:
+		dest.write(decompress(source.read()).decode('utf-8'))
+	print("processing dataset...")
+	queue = asyncio.Queue(1000)
+
+	await asyncio.gather(
+		split_into_document(uncompressed_file, queue),
+		write_to_file(queue, output_file)
+	)
+
+
+
+
+async def main_process(dataset):
 	file_dir = dataset["json"]
 	# with open(file_dir, "w") as file:
-	process_dataset(dataset["url"], file_dir)
+	await process_dataset(dataset["url"], file_dir)
 	tags = db_key + [dataset["env"]]
 	clearml_poc.add_tags(tags)
 
@@ -166,7 +179,7 @@ if __name__ == "__main__":
 			"bitsandbytes >=0.43.2"
 		]
 	)
-	BATCH_SIZE = 8
+	BATCH_SIZE = 6
 	args = Arguments()
 	clearml_poc.clearml_connect_hyperparams(args, "general")
 	llm_args = FineTuneLLM()
@@ -175,17 +188,21 @@ if __name__ == "__main__":
 	llm_id = llm_args.llm_id
 	interested_layers = [llm_args.layer]
 	db_key = [args.llm_layer]
+
+
 	layers_and_keys_pairs = list(zip(interested_layers, db_key))
 	llm = LLMInterface(
 		llm_id=llm_id,
-		# interested_layers=list(interested_layers),
+		interested_layers=list(interested_layers),
 		max_llm_layer=llm_args.max_llm_layer
 		)
 	assert torch.cuda.is_available()
+	loop = asyncio.get_event_loop()
+
 	device = torch.device("cuda")
-	neretrieve_dataset.datasets = [neretrieve_dataset.datasets[1]]
 	for dataset in neretrieve_dataset.datasets:
-		main_process(dataset)
+		loop.run_until_complete(main_process(dataset))
+	loop.close()
 
 print('Notice, artifacts are uploaded in the background')
 print('Done')

@@ -10,6 +10,22 @@ import queries
 import runtime_args
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from contrastive.args import FineTuneLLM, Arguments
+from contrastive.retrieval_eval import RetrievalEval
+
+
+class FewnerdEvalZeroShot(RetrievalEval):
+
+	def __init__(self, layer, entity_to_embedding):
+		super(FewnerdEvalZeroShot, self).__init__(
+			index='fewnerd_tests',
+			layer=layer,
+			entity_to_embedding=entity_to_embedding
+		)
+
+	def entity_type_field_name(self):
+		return 'fine_type'
+
+
 
 
 def main(tasks, series):
@@ -133,10 +149,10 @@ def anchors():
 
 
 if __name__ == "__main__":
-	clearml_poc.clearml_init(task_name="calculate recall")
+	clearml_poc.clearml_init(task_name="calculate recall", queue_name="dsicsgpu")
 
 	layer_obj = {
-		"layer_id": "de8cbfe796714725930af567f488230f",
+		"layer_id": "b5f0c4909f5c40818183c4ff8fbdce59",
 		"llm_layer": FineTuneLLM.layer,
 		"llm_id": FineTuneLLM.llm_id
 	}
@@ -162,12 +178,20 @@ if __name__ == "__main__":
 	                           for key, value in embedding_per_fine_type.items()
 	                           if key in fewnerd_processor.test_fine_types()
 	                           }
+	#
+	# one_shot_tasks = [handle_type_one_shot(type, ids) for type, ids in all_test_types.items()]
+	#
+	# llm_args = ()
+	#
+	# main(one_shot_tasks, series="one shot")
 
-	one_shot_tasks = [handle_type_one_shot(type, ids) for type, ids in all_test_types.items()]
+	fewnerd_eval = FewnerdEvalZeroShot(
+		layer=layer,
+		entity_to_embedding=embedding_per_fine_type,
 
-	llm_args = ()
+	)
 
-	main(one_shot_tasks, series="one shot")
+	# fewnerd_eval.eval_zero_shot()
 
 	zero_shot_tasks = [zero_shot_task(type) for type in all_test_types.keys()]
 	main(zero_shot_tasks, series="zero shot")

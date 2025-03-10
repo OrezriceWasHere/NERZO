@@ -19,8 +19,7 @@ elasticsearch_storage_mapping = {
 	"mappings": {
 		"properties": {
 			"all_text": {
-				"type": "text",
-				"term_vector": "yes"
+				"type": "text"
 			},
 			"doc_id": {
 				"type": "keyword"
@@ -28,9 +27,17 @@ elasticsearch_storage_mapping = {
 			"entity_type": {
 				"type": "keyword"
 			},
+			"index_start": {
+				"type": "short"
+			},
+			"index_end": {
+				"type": "short"
+			},
+			"index_in_text": {
+				"type": "short"
+			},
 			"phrase": {
-				"type": "text",
-				"term_vector": "yes"
+				"type": "text"
 			},
 			"text_id": {
 				"type": "keyword"

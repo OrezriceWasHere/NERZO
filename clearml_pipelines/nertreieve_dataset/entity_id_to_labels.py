@@ -10,45 +10,32 @@ import asyncio
 import dataset_provider
 from clearml_pipelines.nertreieve_dataset import neretrieve_dataset
 from contrastive.args import Arguments
+from collections import defaultdict
 
 urllib3.disable_warnings()
 
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
 
-mapping = neretrieve_dataset.elasticsearch_storage_mapping
 
 
-def generate_id(item):
-	keys = ["text_id", "phrase", "entity_type", "entity_id", "index_start", "index_end"]
-	hash_v = hashlib.sha1(str.encode("".join([str(item[key]) for key in keys]))).hexdigest()
-	return f"nert_{hash_v}"
 
-
-async def write_to_elastic_worker(queue):
+async def mapping_entity_id_to_all_possible_labels(queue):
 	pbar = tqdm()
-	batch = []
+	entity_id_to_labels = defaultdict(list)
 	while True:
 		record, index = await queue.get()
 		if record is None:
 			break
-		batch.append((record, index))
-		if len(batch) == BATCH_SIZE:
-			await write_batch(batch)
-			batch = []
-			pbar.update(BATCH_SIZE)
-	if batch:
-		await write_batch(batch)
-		pbar.update(len(batch))
+		entity_id_to_labels[record['text_id']].append(record["entity_type"])
+		pbar.update(1)
+	file_name = 'text_id_to_labels.json'
+	async with aiofiles.open(file_name, "w") as f:
+		await f.write(json.dumps(entity_id_to_labels))
+	clearml_dataset = Dataset.create(dataset_name=file_name, dataset_project="neretrieve_pipeline")
+	clearml_dataset.add_files(path=file_name)
+	clearml_dataset.add_tags(['entity_to_labels'])
 
-
-async def write_batch(bulk):
-	batch = []
-	for record, index in bulk:
-		doc_id = generate_id(record)
-		batch.append({"update": {"_index": index, "_id": doc_id}})
-		batch.append({"doc": {**record, "doc_id": doc_id}, "doc_as_upsert": True})
-	await dataset_provider.bulk(batch)
 
 
 async def load_json_task(dataset, queue):
@@ -62,14 +49,13 @@ async def load_json_task(dataset, queue):
 
 	print(f"Processing dataset {env}")
 	index = f"nertrieve_{env}"
-	await dataset_provider.ensure_existing_index(index, mapping)
+	# await dataset_provider.ensure_existing_index(index, mapping)
 
 	file_path = os.path.join(dataset_dir, dataset["json"])
 	async with aiofiles.open(file_path, mode='r') as file:
 
 		async for line in file:
 			document = json.loads(line)
-
 			await queue.put((document, index))
 
 
@@ -80,7 +66,7 @@ async def load_json_task(dataset, queue):
 async def main():
 	# Create multiple worker queues and tasks
 	queue = asyncio.Queue(maxsize=10000)
-	worker_task = write_to_elastic_worker(queue)
+	worker_task = mapping_entity_id_to_all_possible_labels(queue)
 
 	# Gather all tasks
 	await asyncio.gather(
@@ -92,18 +78,18 @@ async def main():
 if __name__ == "__main__":
 	clearml_poc.clearml_init(
 		project_name="neretrieve_pipeline",
-		task_name="Pipeline step 3 index to database",
+		task_name="text id to all labels",
 		requirements=["aiohttp", "aiofiles"],
 		queue_name='dsicsgpu'
 	)
+	args = Arguments()
+	dataset_tag_obj = {"dataset_tag": args.llm_layer}
 
 
 	# Configuration constants
 	BATCH_SIZE = 2048
 
 	args = Arguments()
-	dataset_tag_obj = {"dataset_tag": args.llm_layer}
-	clearml_poc.clearml_connect_hyperparams(dataset_tag_obj)
 
 	loop = asyncio.get_event_loop()
 	loop.run_until_complete(main())

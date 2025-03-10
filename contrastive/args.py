@@ -8,7 +8,7 @@ class Arguments:
 
     input_layer: int = 1024
     hidden_layer: int = 100
-    output_layer: int = 250
+    output_layer: int = 500
 
     is_hidden_layer: bool = False
     batch_size: int = 20
@@ -28,7 +28,7 @@ class Arguments:
     activation: str = "silu"
     noise: str = "dropout"
     dropout: float = 0.1
-    epochs: int = 120
+    epochs: int = 50
     enable_gate: bool = True
     loss_fn: str = "triplet_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss", triplet_contrastive_loss
 

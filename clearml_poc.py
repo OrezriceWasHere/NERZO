@@ -1,3 +1,5 @@
+import uuid
+
 from clearml import Task, OutputModel, Model
 import numpy as np
 import pandas as pd
@@ -13,7 +15,7 @@ def clearml_allowed(func):
 
 
 @clearml_allowed
-def clearml_init(project_name=None, task_name=None, requirements=None):
+def clearml_init(project_name=None, task_name=None, requirements=None, queue_name=None):
     global execution_task, output_model
     Task.add_requirements('bitsandbytes', '>=0.43.2')
     Task.add_requirements('transformers', '>=4.45.0')
@@ -22,6 +24,7 @@ def clearml_init(project_name=None, task_name=None, requirements=None):
     requirements = requirements or []
     for requirement in requirements:
         Task.add_requirements(requirement, '')
+    # Task.add_requirements("requirements.txt", '')
 
     execution_task = Task.init(project_name=project_name or "NER - Zero Shot Chat GPT",
                                task_name=task_name or "hidden layers - match an entity to another sentence to detect same entity",
@@ -33,10 +36,10 @@ def clearml_init(project_name=None, task_name=None, requirements=None):
         execution_task.set_name(name)
 
 
-
+    queue_name = queue_name or RuntimeArgs.compute_queue
 
     if RuntimeArgs.running_remote:
-        execution_task.execute_remotely(queue_name=RuntimeArgs.compute_queue,
+        execution_task.execute_remotely(queue_name=queue_name,
                                         exit_process=True)
 
 
@@ -100,7 +103,12 @@ def add_table(title, series, iteration, table: pd.DataFrame):
 
 @clearml_allowed
 def generate_tracked_model(**kwargs) -> OutputModel:
-    return OutputModel(task=execution_task, **kwargs)
+    kwargs = {**kwargs, "task":execution_task}
+    model = OutputModel(**kwargs)
+    model.connect(task=execution_task)
+    return model
+
+
 
 
 @clearml_allowed
@@ -110,9 +118,15 @@ def register_artifact(artifact, name):
 @clearml_allowed
 def upload_model_to_clearml(model: OutputModel, model_path):
     if RuntimeArgs.upload_model:
-        model.update_weights(weights_filename=model_path)
-        execution_task.update_output_model(model_path=model_path)
+        # if model.id:
+        target_filename = str(uuid.uuid4())+ ".pt"
+        output_uri = execution_task.storage_uri or execution_task._get_default_report_storage_uri()
+
+        model.update_weights(model_path, upload_uri=output_uri)
         OutputModel.wait_for_uploads()
+        # else:
+        #     execution_task.update_output_model(model_path=model_path)
+
         print(f'uploading models from {model_path}')
 
 @clearml_allowed

@@ -31,13 +31,14 @@ def executing_pipeline(
 	# Use the pipeline argument to start the pipeline and pass it ot the first step
 	print("launch step one")
 	entities_to_names = nertrieve_processor.type_to_name()
+	PipelineDecorator.debug_pipeline()
 
 	embeddings = step_create_embedding(
 		llm_id,
 		layer,
 		max_llm_layer,
 		entities_to_names=entities_to_names
-		)
+	)
 
 	# Use the returned data from the first step (`step_one`), and pass it to the next step (`step_two`)
 	# Notice! unless we actually access the `data_frame` object,

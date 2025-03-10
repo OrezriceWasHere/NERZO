@@ -3,11 +3,8 @@ import queries
 import runtime_args
 
 elastic_conf = runtime_args.ElasticsearchConnection()
-
 es = Elasticsearch(**elastic_conf.model_dump())
-
 async_es = AsyncElasticsearch(**elastic_conf.model_dump())
-
 elastic_query = None
 
 both_indices = "ner_poc"
@@ -190,7 +187,7 @@ async def consume_big_aggregation(query, agg_key, index):
         for bucket in response["aggregations"][agg_key]["buckets"]:
             yield bucket
         query["aggs"][agg_key]["composite"]["after"] = after_key
-        response = await async_es.search(index=index, body=query, size=0)
+        response = await async_es.search(index=index, body=query)
 
 async def consume_big_query(query, index):
     response = await async_es.search(index=index, body=query)

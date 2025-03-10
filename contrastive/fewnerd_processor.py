@@ -108,18 +108,20 @@ async def yield_test_dataset(anchor_type, **kwargs):
 
 
 def train_fine_types():
-    return ['education', 'airport', 'restaurant', 'sportsleague', 'disease', 'hospital', 'painting', 'other',
+    return (['education', 'airport', 'restaurant', 'sportsleague', 'disease', 'hospital', 'painting', 'other',
             'library', 'sportsevent', 'soldier', 'game', 'educationaldegree', 'broadcastprogram', 'mountain',
             'road/railway/highway/transit', 'company', 'politician', 'attack/battle/war/militaryconflict',
             'astronomything', 'language', 'train', 'scholar', 'bodiesofwater', 'chemicalthing', 'director',
             'showorganization', 'writtenart', 'disaster', 'medical', 'music', 'airplane', 'biologything', 'theater',
             'sportsteam', 'government/governmentagency', 'livingthing', 'artist/author', 'protest', 'god']
+        + test_fine_types()
+    )
+
 
 
 def test_fine_types(batch_size=50, instances_per_type=100, llm_layer=None):
     return ['island', 'athlete', 'politicalparty', 'actor', 'software', 'sportsfacility', 'weapon', 'food', 'election',
             'car', 'currency', 'park', 'award', 'GPE', 'media/newspaper', 'law', 'religion', 'film', 'hotel', 'ship']
-
 
 def extract_entities_from_es_response(response):
     return [docu["_source"] for docu in response] if response else []
@@ -262,14 +264,14 @@ def retrieve_anchors_for_sentence_test():
                          "9132ff2b0b38f51e88648ae162f0119a6363237c"]}
 
 
-def load_entity_name_embeddings(layer_name, entity_name_strategy) -> dict[str, torch.Tensor]:
-    index = "fewnerd_entity_name_to_embedding"
+def load_entity_name_embeddings(layer_name, entity_name_strategy, index = "fewnerd_entity_name_to_embedding") -> dict[str, torch.Tensor]:
+
     elastic_field = f'embedding.{layer_name}.{entity_name_strategy}'
     elastic_query = {
         "query": {
             "match_all": {}
         },
-        "size": 100,
+        "size": 600,
         "_source": [
             "entity_name",
             elastic_field,

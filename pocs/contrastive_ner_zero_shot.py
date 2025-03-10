@@ -1,5 +1,7 @@
 import asyncio
+import dataclasses
 import json
+import uuid
 from collections import defaultdict
 from functools import partial
 import math
@@ -19,8 +21,8 @@ from sklearn import metrics
 def main():
 	for e in trange(mlp_args.epochs):
 		train(e)
-		evaluate(e)
-		upload_models()
+		# evaluate(e)
+		upload_models(e)
 
 
 def avg(l):
@@ -37,14 +39,17 @@ def tensorify(*document_items):
 			documents=document_item if isinstance(document_item, list) else [document_item]
 		)
 
-def upload_models():
+def upload_models(epoch):
     global max_benchmark, current_benchmark, instances_model, instances_model_clearml
-    if math.isclose(current_benchmark, max_benchmark):
-        print(f"recognized better benchmark value {max_benchmark}. Uploading model")
+    # if math.isclose(current_benchmark, max_benchmark):
+    #     print(f"recognized better benchmark value {max_benchmark}. Uploading model")
+    # if epoch == 0:
+	#     update_output_model(model_path=model_path)
 
-        torch.save(instances_model.state_dict(), f"instances_model.pt")
-        clearml_poc.upload_model_to_clearml(instances_model_clearml, "instances_model.pt")
-        clearml_poc.add_tags([str(instances_model_clearml.id)])
+    file_path = f'instances_model.pt'
+    torch.save(instances_model.state_dict(), file_path)
+    clearml_poc.upload_model_to_clearml(instances_model_clearml, file_path)
+    clearml_poc.add_tags([str(instances_model_clearml.id)])
 
 
 async def iterate_over_train(fine_type, similarity_strategy):
@@ -255,7 +260,7 @@ def log_training_metrics(index, series, **kwargs):
 
 
 if __name__ == "__main__":
-	clearml_poc.clearml_init()
+	clearml_poc.clearml_init(queue_name='dsicsgpu')
 	max_benchmark = 0
 	current_benchmark = 0
 	assert torch.cuda.is_available(), "no gpu available"
@@ -269,7 +274,12 @@ if __name__ == "__main__":
 	model = ContrastiveMLP(mlp_args).to(device)
 
 	similarity_criterion = ContrastiveLoss(loss_fn=mlp_args.loss_fn, margin=mlp_args.triplet_loss_margin)
-	instances_model_clearml = clearml_poc.generate_tracked_model(name="instances_model", framework="PyTorch")
+
+	instances_model_clearml = clearml_poc.generate_tracked_model(name="instances_model",
+	                                                             framework="PyTorch",
+	                                                             config_dict=dataclasses.asdict(mlp_args))
+
+
 	instances_model = model
 	types_model = model
 

@@ -230,6 +230,78 @@ def query_search_by_similarity(embedding, layer, default_filter_query=None):
         }
     }
 
+def query_top_score_per_vector_search(embedding_vector, embedding_field, fields_to_return=None):
+    fields_to_return = fields_to_return or ["text_id", "doc_id",
+                                            "entity_type",
+         "all_text", "coarse_type", "fine_type", "phrase", "_score"]
+    query = {
+        "query": {
+            "script_score": {
+                "query": {
+                    "match_all": {}
+                },
+                "script": {
+                    "source": f"cosineSimilarity(params.query_vector, '{embedding_field}') + 1.0",
+                    "params": {
+                        "query_vector": embedding_vector
+                    }
+                }
+            }
+        },
+        "aggs": {
+    "grouped_results": {
+      "composite": {
+        "size": 1000,
+        "sources": [
+          {
+            "text_id": {
+              "terms": {
+                "field": "text_id"
+              }
+            }
+          }
+        ]
+      },
+     "aggs": {
+            "max_score": {
+              "max": {
+                "script": {
+                  "source": "_score"
+                }
+              }
+            },
+            "top_hit": {
+              "top_hits": {
+                "size": 200,
+                "_source": {
+                  "includes": ["fine_type", "entity_type"]
+                },
+                "sort": [
+                  {
+                    "_score": {
+                      "order": "desc"
+                    }
+                  }
+                ]
+              }
+            },
+            "sorted_results": {
+              "bucket_sort": {
+                "sort": [
+                  {
+                    "max_score": {
+                      "order": "desc"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+    return query
+
 
 def query_get_by_fine_grained_fewnerd_v3(fine_grained_type: str | list[str], randomized=True,
                                          batch_size: int = 200, llm_layer=None) -> dict:

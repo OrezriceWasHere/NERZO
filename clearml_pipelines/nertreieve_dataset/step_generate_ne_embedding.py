@@ -19,13 +19,14 @@ def not_processed_documents_query():
 				"must_not": [
 					{"exists": {"field": f"embedding.{mlp_id}"}},
 				]
+
 			}
 		},
 		"sort": [
-			"text_id",
+			{"text_id":"desc"},
 			"index_start"
 		],
-		"_source": [f"embedding.{args.llm_layer}.*"]
+		"_source": [f"embedding.{args.llm_layer}.*", "entity_type"]
 	}
 
 	return query
@@ -46,7 +47,8 @@ def calculate_ne_embedding(embedding_end, embedding_start):
 	embedding = embedding.to(device)
 	with torch.no_grad():
 		embedding = similarity_model(embedding)
-	return embedding
+	embedding_norm = torch.nn.functional.normalize(embedding)
+	return embedding_norm
 
 
 async def document_consumer(index, queue):
@@ -63,7 +65,7 @@ async def document_consumer(index, queue):
 		records = await queue.get()
 		if not records:
 			break
-		ids = [records["_id"] for records in records]
+		ids = [x["_id"] for x in records]
 		embedding_start = torch.tensor(
 			[item["_source"]["embedding"][args.llm_layer]["start"] for item in records], device=device
 		).clone().detach()
@@ -75,8 +77,7 @@ async def document_consumer(index, queue):
 		for doc_id, embedding in zip(ids, ne_embedding):
 			batch.append({"update": {"_index": index, "_id": doc_id}})
 			batch.append({"doc": {f"embedding.{mlp_id}": embedding.tolist()}, "doc_as_upsert": True})
-		x = await dataset_provider.bulk(batch)
-		pass
+		await dataset_provider.bulk(batch)
 		pbar.update(len(records))
 
 
@@ -115,8 +116,8 @@ if __name__ == "__main__":
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
-	mlp_layer = {"layer_id": "e4a996df7c224206b8cf232a7906f5eb"}
-	BATCH_SIZE = 100
+	mlp_layer = {"layer_id": "b5f0c4909f5c40818183c4ff8fbdce59"}
+	BATCH_SIZE = 500
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
 	mlp_id = mlp_layer["layer_id"]
 	write_index = "nertrieve_test"

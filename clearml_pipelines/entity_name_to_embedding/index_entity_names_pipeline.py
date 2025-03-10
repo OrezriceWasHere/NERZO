@@ -22,6 +22,7 @@ def step_create_embedding(
 		):
 	import torch
 	from llm_interface import LLMInterface
+	from tqdm import tqdm
 	import json
 	import hashlib
 
@@ -33,27 +34,28 @@ def step_create_embedding(
 		interested_layers=layer,
 		max_llm_layer=max_llm_layer
 	)
-	entity_names = list(entities_to_names.values())
-	entities = list(entities_to_names.keys())
-	tokens = llm.tokenize(entity_names).to(device)
-	forwarded_tokens = llm.get_llm_at_layer(tokens, layer)
-	avg_tokens = torch.mean(forwarded_tokens, dim=1)
-	last_tokens = forwarded_tokens[:, -1, :]
 
 	output = []
 	elastic_layer_name = fewnerd_dataset.llm_and_layer_to_elastic_name(llm_id=llm_id, layer=layer)
-	for avg, last, entity, entity_name in zip(avg_tokens, last_tokens, entities, entity_names):
-		entity_hash = str(hashlib.sha1(str.encode(entity)).hexdigest())
+	for entity_name, entity_desc in tqdm(entities_to_names.items()):
+		tokens = llm.tokenize(entity_desc).to(device)
+		forwarded_tokens = llm.get_llm_at_layer(tokens, layer)[0]
+		forwarded_tokens =  forwarded_tokens[1: , :]
+		avg_tokens = torch.mean(forwarded_tokens, dim=0)
+		last_tokens = forwarded_tokens[-1, :]
+
+		entity_hash = str(hashlib.sha1(str.encode(entity_name)).hexdigest())
 		output.append(
-			{
-				"entity_id": entity_hash,
-				"entity_name": entity,
-				"entity_description": entity_name,
-				"llm_layer": elastic_layer_name,
-				f"embedding.{elastic_layer_name}.avg": avg.detach().cpu().tolist(),
-				f"embedding.{elastic_layer_name}.end": last.detach().cpu().tolist(),
-			}
+				{
+					"entity_id": entity_hash,
+					"entity_name": entity_name,
+					"entity_description": entity_name,
+					"llm_layer": elastic_layer_name,
+					f"embedding.{elastic_layer_name}.avg": avg_tokens.detach().cpu().tolist(),
+					f"embedding.{elastic_layer_name}.end": last_tokens.detach().cpu().tolist(),
+				}
 		)
+
 	return output
 
 

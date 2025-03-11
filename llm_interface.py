@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from transformers import BitsAndBytesConfig
 from huggingface_hub import login
-from transformers import T5EncoderModel
+# from transformers import T5EncoderModel
 from peft import LoraConfig, get_peft_model, PeftType
 
 import llama3_tokenizer

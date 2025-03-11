@@ -134,7 +134,7 @@ def choose_llm_representation(end, start, input_tokens):
 __input_token_factory = {
     "diff": lambda end, start: (torch.tensor(end) - torch.tensor(start)),
     "end": lambda end, start: torch.tensor(end),
-    "start_end_pair": lambda end, start: torch.concat((torch.tensor(end), torch.tensor(start)))
+    "start_end_pair": lambda end, start: torch.concat((torch.tensor(end), torch.tensor(start)), dim=-1)
 }
 
 

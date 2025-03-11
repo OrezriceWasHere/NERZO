@@ -13,6 +13,8 @@ def get_mlp_by_id(mlp_id: str, device=None) -> ContrastiveMLP:
 	print(f'generating mlp from task:\t {task.data.name} with id\t {model.id}.\n task id {task.id}.\nlink to task {task.get_output_log_web_page()}')
 	args_of_task = task.get_parameters(cast=False)
 	args_dict = {key.replace("general/", ""): value for key, value in args_of_task.items() if "general" in key}
+	if not args_dict:
+		args_dict = {key.replace("mlp_args/", ""): value for key, value in args_of_task.items() if "mlp_args" in key}
 	args: Arguments = dataclass_decoder(dct=args_dict, cls=Arguments)
 	local_mlp_head_path = model.get_local_copy(raise_on_error=True)
 

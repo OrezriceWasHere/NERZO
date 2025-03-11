@@ -1,5 +1,3 @@
-from clearml_pipelines.fewnerd_pipeline.fewnerd_dataset import elasticsearch_storage_mapping
-
 datasets = [
 	{
 		"url": "https://storage.googleapis.com/neretrieve_dataset/supervised_ner/NERetrive_sup_test.jsonl.bz2",

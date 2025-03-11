@@ -27,6 +27,7 @@ class RetrievalEval(abc.ABC):
 		self.entity_field = self.entity_type_field_name()
 		self.semaphore = asyncio.Semaphore(10)
 		self.text_id_to_labels = nertrieve_processor.text_id_to_labels()
+		self.entity_to_name = nertrieve_processor.type_to_name()
 
 	def eval_zero_shot(self):
 		zero_shot_tasks = self.generate_zero_shot_task()
@@ -63,19 +64,6 @@ class RetrievalEval(abc.ABC):
 			table=df.mean().to_frame()
 		)
 
-	# async def handle_type_one_shot(self, entity_type, ids):
-	# 	count_type = await self.get_count_entity_type(entity_type)
-	# 	result = {}
-	# 	for k in (10, 50, count_type):
-	# 		recall_list = []
-	# 		for fewnerd_id in ids:
-	# 			recall = await self.recall_by_id(entity_type, fewnerd_id, k)
-	# 			recall_list.append(recall)
-	# 		size_desc = k if k in [10, 50] else "size"
-	# 		result[f"recall@{size_desc}"] = sum(recall_list) / len(recall_list)
-	# 	result["size"] = count_type
-	# 	return result
-
 	async def zero_shot_task(self, entity_type):
 		async with self.semaphore:
 			count_type = await self.get_count_entity_type(entity_type)
@@ -108,7 +96,10 @@ class RetrievalEval(abc.ABC):
 		similar_doc = await self.search_similar_items(embedding, k, entity_type)
 		returned_fine_types = [1 if entity_type in similar_doc[text_id]
 		                       else 0 for text_id in similar_doc]
-		return recall_score(y_true=[1] * k, y_pred=returned_fine_types)
+		assert len(returned_fine_types) == k, f"could not fetch {k} docs for {entity_type}"
+		return sum(returned_fine_types) / k
+
+	# return recall_score(y_true=[1] * k, y_pred=returned_fine_types)
 
 	def get_embedding_field_name(self):
 		return f'embedding.{self.layer}'
@@ -119,22 +110,53 @@ class RetrievalEval(abc.ABC):
 		count = 0
 
 		embedding_field = self.get_embedding_field_name()
+		# 	query = {
+		# 		"size":min(3 * k, 10000),
+		# 		"query": {
+		# 			"script_score": {
+		# 				"query": {"match_all": {}},
+		# 				"script": {
+		# 					f"source": f"cosineSimilarity(params.query_vector, '{embedding_field}') + 1.0",
+		# 					"params": {"query_vector": embedding}
+		# 				}
+		# 			}
+		# 		},
+		# 		"_source": ["text_id", "fine_type", "entity_type"],
+		# 		"sort": [
+		#     { "_score": "desc" },
+		#     { "doc_id": "asc" }
+		# ]
+		# 	}
 		query = {
-			"size":1,
+			"size": min(3 * k, 5000),
+
 			"query": {
-				"script_score": {
-					"query": {"match_all": {}},
-					"script": {
-						f"source": f"cosineSimilarity(params.query_vector, '{embedding_field}') + 1.0",
-						"params": {"query_vector": embedding}
-					}
+				"bool": {
+					"must": [
+						{"match_all": {}}
+					],
+					"should": [
+						{
+							"function_score": {
+								"query": {
+									"match": {
+										"all_text": self.entity_to_name[entity_type],
+									}
+								},
+								"boost_mode": "replace"
+							}
+						}
+					]
 				}
+
 			},
+
 			"_source": ["text_id", "fine_type", "entity_type"],
 			"sort": [
-        { "_score": "desc" },
-        { "doc_id": "asc" }
-    ]
+				{"_score": "desc"},
+				{"doc_id": "asc"}
+			]
+
 		}
 		async for batch in dataset_provider.consume_big_query(query=query, index=self.index):
 			if len(unique_ids) == k:
@@ -144,25 +166,23 @@ class RetrievalEval(abc.ABC):
 				if len(unique_ids) == k:
 					break
 
+		return {text_id: self.text_id_to_labels[text_id] for text_id in unique_ids}
 
-		return {text_id:self.text_id_to_labels[text_id] for text_id in unique_ids}
-		# query_get_entity_type = {
-		# 	"size": 3 * len(unique_ids),
-		# 	"query":{
-		# 		"terms":{
-		# 			"text_id": list(unique_ids)
-		# 		}
-		# 	},
-		# 	"_source": ["text_id", self.entity_type_field_name()],
-		# 	"sort": ["text_id"]
-		# }
-		# answer = defaultdict(list)
-		# async for batch in dataset_provider.consume_big_query(query=query_get_entity_type, index=self.index):
-		# 	for item in batch:
-		# 		answer[item["_source"]["text_id"]].append(item)
-		# return answer
-
-
+	# query_get_entity_type = {
+	# 	"size": 3 * len(unique_ids),
+	# 	"query":{
+	# 		"terms":{
+	# 			"text_id": list(unique_ids)
+	# 		}
+	# 	},
+	# 	"_source": ["text_id", self.entity_type_field_name()],
+	# 	"sort": ["text_id"]
+	# }
+	# answer = defaultdict(list)
+	# async for batch in dataset_provider.consume_big_query(query=query_get_entity_type, index=self.index):
+	# 	for item in batch:
+	# 		answer[item["_source"]["text_id"]].append(item)
+	# return answer
 
 	async def get_count_entity_type(self, entity_type):
 		embedding_filed = self.get_embedding_field_name()

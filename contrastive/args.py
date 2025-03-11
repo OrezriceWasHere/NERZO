@@ -8,7 +8,7 @@ class Arguments:
 
     input_layer: int = 1024
     hidden_layer: int = 100
-    output_layer: int = 500
+    output_layer: int = 250
 
     is_hidden_layer: bool = False
     batch_size: int = 20
@@ -16,7 +16,7 @@ class Arguments:
 
     llm_layer: str = "llama_3_17_v_proj"
 
-    input_tokens: str = "end"  # [possible_values: "end", "start_end_pair", "diff"]
+    input_tokens: str = "start_end_pair"  # [possible_values: "end", "start_end_pair", "diff"]
     entity_name_embeddings: str = "avg"
 
     fine_tune_llm: bool = False

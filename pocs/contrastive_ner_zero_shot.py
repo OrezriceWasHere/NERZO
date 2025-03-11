@@ -84,8 +84,9 @@ async def one_type_epoch_training(fine_type, epoch):
 		instances_optimizer.zero_grad()
 		types_optimizer.zero_grad()
 		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
-
-		for metric, value in similarity(types_model, anchor=layer_to_tensor_train[fine_type]).items():
+		anchor_tensor = layer_to_tensor_train[fine_type]
+		anchor_tensor = torch.concat((anchor_tensor, anchor_tensor), dim=-1)
+		for metric, value in similarity(types_model, anchor=anchor_tensor).items():
 			results[f'types_{metric}'].extend(value)
 
 		instances_optimizer.step()
@@ -105,7 +106,6 @@ def compute_similarity_base(
 	good_similarities = []
 	bad_similarities = []
 	losses = []
-
 	anchor = model(anchor)
 	positive_examples = instances_model(positive_examples)
 	negative_examples = instances_model(negative_examples)
@@ -173,10 +173,13 @@ async def one_type_epoch_evaluation(fine_type, epoch):
 		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
 		prediction = partial(eval_predict, good_batch=good_batch, bad_batch=bad_batch)
 
-		for metric, value in similarity(types_model, anchor=layer_to_tensor_test[fine_type]).items():
+		anchor_tensor = layer_to_tensor_test[fine_type]
+		anchor_tensor = torch.concat((anchor_tensor, anchor_tensor), dim=-1)
+
+		for metric, value in similarity(types_model, anchor=anchor_tensor).items():
 			results[f'types_{metric}'].extend(value)
 
-		for metric, value in prediction(types_model, anchor=layer_to_tensor_test[fine_type]).items():
+		for metric, value in prediction(types_model, anchor=anchor_tensor).items():
 			results[f'types_{metric}'].extend(value)
 
 
@@ -278,6 +281,7 @@ if __name__ == "__main__":
 	instances_model_clearml = clearml_poc.generate_tracked_model(name="instances_model",
 	                                                             framework="PyTorch",
 	                                                             config_dict=dataclasses.asdict(mlp_args))
+
 
 
 	instances_model = model

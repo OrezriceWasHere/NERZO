@@ -25,7 +25,6 @@ class NERtrieveEvalZeroShot(RetrievalEval):
 
 
 if __name__ == '__main__':
-	args = Arguments()
 	clearml_poc.clearml_init(task_name='eval nertrieve',
 	                         queue_name='dsicsgpu')
 

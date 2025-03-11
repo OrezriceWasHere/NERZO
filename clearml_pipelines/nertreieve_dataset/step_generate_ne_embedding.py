@@ -23,7 +23,7 @@ def not_processed_documents_query():
 			}
 		},
 		"sort": [
-			{"text_id":"desc"},
+			{"text_id":"asc"},
 			"index_start"
 		],
 		"_source": [f"embedding.{args.llm_layer}.*", "entity_type"]
@@ -116,7 +116,7 @@ if __name__ == "__main__":
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
-	mlp_layer = {"layer_id": "b5f0c4909f5c40818183c4ff8fbdce59"}
+	mlp_layer = {"layer_id": "14c3fecc00e2431aaa8b5a1ad4024929"}
 	BATCH_SIZE = 500
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
 	mlp_id = mlp_layer["layer_id"]

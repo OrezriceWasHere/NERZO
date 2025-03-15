@@ -1,6 +1,8 @@
 import json
 import os
 import hashlib
+from time import sleep
+
 import aiofiles
 from clearml import Dataset
 from tqdm.asyncio import tqdm
@@ -66,14 +68,12 @@ async def load_json_task(dataset, queue):
 
 	file_path = os.path.join(dataset_dir, dataset["json"])
 	async with aiofiles.open(file_path, mode='r') as file:
-
 		async for line in file:
 			document = json.loads(line)
 
 			await queue.put((document, index))
 
-
-	# Signal completion to all workers
+		# Signal completion to all workers
 		await queue.put((None, index))
 
 
@@ -82,9 +82,16 @@ async def main():
 	queue = asyncio.Queue(maxsize=10000)
 	worker_task = write_to_elastic_worker(queue)
 
+	dataset = {
+		"url": "https://storage.googleapis.com/neretrieve_dataset/IR/NERetrive_IR_test.jsonl.bz2",
+		"name": "retrieval-test-supervised.txt",
+		"json": "retrieval-test-supervised.json",
+		"env": "test"
+	}
+
 	# Gather all tasks
 	await asyncio.gather(
-		load_json_task(neretrieve_dataset.datasets[0], queue),
+		load_json_task(dataset, queue),
 		worker_task
 	)
 
@@ -96,6 +103,10 @@ if __name__ == "__main__":
 		requirements=["aiohttp", "aiofiles"],
 		queue_name='dsicsgpu'
 	)
+
+	print("sleeping for six hours")
+	six_hours = 6 * 3600
+	sleep(six_hours)
 
 
 	# Configuration constants

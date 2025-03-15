@@ -23,7 +23,7 @@ def not_processed_documents_query():
 			}
 		},
 		"sort": [
-			{"text_id":"asc"},
+			{"text_id":"desc"},
 			"index_start"
 		],
 		"_source": [f"embedding.{args.llm_layer}.*", "entity_type"]
@@ -77,7 +77,8 @@ async def document_consumer(index, queue):
 		for doc_id, embedding in zip(ids, ne_embedding):
 			batch.append({"update": {"_index": index, "_id": doc_id}})
 			batch.append({"doc": {f"embedding.{mlp_id}": embedding.tolist()}, "doc_as_upsert": True})
-		await dataset_provider.bulk(batch)
+		x = await dataset_provider.bulk(batch)
+		assert not x["errors"], "erros occured during bulk query. response for first item: "
 		pbar.update(len(records))
 
 
@@ -116,8 +117,8 @@ if __name__ == "__main__":
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
-	mlp_layer = {"layer_id": "14c3fecc00e2431aaa8b5a1ad4024929"}
-	BATCH_SIZE = 500
+	mlp_layer = {"layer_id": "31042a3689e340a08789b2b0cc48c71e"}
+	BATCH_SIZE = 2500
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
 	mlp_id = mlp_layer["layer_id"]
 	write_index = "nertrieve_test"

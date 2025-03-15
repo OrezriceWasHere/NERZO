@@ -24,7 +24,7 @@ async def mapping_entity_id_to_all_possible_labels(queue):
 	pbar = tqdm()
 	entity_id_to_labels = defaultdict(list)
 	while True:
-		record, index = await queue.get()
+		record = await queue.get()
 		if record is None:
 			break
 		entity_id_to_labels[record['text_id']].append(record["entity_type"])
@@ -35,32 +35,26 @@ async def mapping_entity_id_to_all_possible_labels(queue):
 	clearml_dataset = Dataset.create(dataset_name=file_name, dataset_project="neretrieve_pipeline")
 	clearml_dataset.add_files(path=file_name)
 	clearml_dataset.add_tags(['entity_to_labels'])
+	clearml_dataset.finalize()
 
 
 
 async def load_json_task(dataset, queue):
-	env = dataset["env"]
-	# Load the artifact
-	dataset_dir = Dataset.get(
-		dataset_name=dataset["json"],
-		dataset_tags=[dataset_tag_obj["dataset_tag"]],
-		dataset_project="neretrieve_pipeline"
-	).get_local_copy()
-
-	print(f"Processing dataset {env}")
-	index = f"nertrieve_{env}"
-	# await dataset_provider.ensure_existing_index(index, mapping)
-
-	file_path = os.path.join(dataset_dir, dataset["json"])
-	async with aiofiles.open(file_path, mode='r') as file:
-
-		async for line in file:
-			document = json.loads(line)
-			await queue.put((document, index))
+	print(f"Processing dataset test")
+	index = f"nertrieve_test"
+	query = {
+		"query": {"match_all": {}},
+		"sort": ["text_id"],
+		"_source":["text_id", "entity_type"],
+		"size": 5000,
+	}
+	async for batch in dataset_provider.consume_big_query(query=query, index=index):
+		for record in batch:
+			await queue.put(record["_source"])
 
 
 	# Signal completion to all workers
-		await queue.put((None, index))
+	await queue.put(None)
 
 
 async def main():

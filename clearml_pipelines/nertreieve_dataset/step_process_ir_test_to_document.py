@@ -87,30 +87,19 @@ def process_batch(batch):
 						index_end = index_start + len(
 							" ".join(document_token_sequence[min(reference):max(reference) + 1])
 						)
-						from_text = all_text[index_start:index_end]
-						for char in REMOVEING_CHARACTERS:
-							from_text = from_text.replace(char, "")
-						if phrase.lower() != from_text.lower():
-							if phrase.lower() in from_text.lower():
-								offset = from_text.lower().index(phrase.lower())
-								index_start += offset
-								index_end = index_start + len(phrase)
-								from_text = all_text[index_start:index_end]
-						for char in REMOVEING_CHARACTERS:
-							from_text = from_text.replace(char, "")
-						if phrase.lower() == from_text.lower():
-							tagging_array.append(
-								{
-									"phrase": phrase,
-									"entity_type": tagging_type,
-									"entity_id": tagging_instance,
-									"index_in_text": reference,
-									"index_start": index_start,
-									"index_end": index_end
-								}
-							)
+						if index_start == index_end:
+							print(f'index start and end. {index_start}, {index_end}, phrase {phrase}, reference {reference}, entity {tagging_type}, all text {all_text}')
 						else:
-							print(f'it did not work out for me. from text: {from_text} \t phrase: {phrase}')
+							tagging_array.append(
+									{
+										"phrase": phrase,
+										"entity_type": tagging_type,
+										"entity_id": tagging_instance,
+										"index_in_text": reference,
+										"index_start": index_start,
+										"index_end": index_end
+									}
+								)
 		if not tagging_array:
 			continue
 		distinct_indices = {tuple((tagging["index_start"], tagging["index_end"])) for tagging in tagging_array}

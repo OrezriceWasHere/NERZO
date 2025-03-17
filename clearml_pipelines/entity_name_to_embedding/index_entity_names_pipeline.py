@@ -49,7 +49,7 @@ def step_create_embedding(
 				{
 					"entity_id": entity_hash,
 					"entity_name": entity_name,
-					"entity_description": entity_name,
+					"entity_description": entity_desc,
 					"llm_layer": elastic_layer_name,
 					f"embedding.{elastic_layer_name}.avg": avg_tokens.detach().cpu().tolist(),
 					f"embedding.{elastic_layer_name}.end": last_tokens.detach().cpu().tolist(),

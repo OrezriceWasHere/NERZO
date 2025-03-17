@@ -24,7 +24,7 @@ class RetrievalEval(abc.ABC):
 		self.embedding_per_type = entity_to_embedding
 		self.all_test_types = list(entity_to_embedding.keys())
 		self.entity_field = self.entity_type_field_name()
-		self.semaphore = asyncio.Semaphore(5)
+		self.semaphore = asyncio.Semaphore(10)
 		self.text_id_to_labels = nertrieve_processor.text_id_to_labels()
 		self.entity_to_name = nertrieve_processor.type_to_name()
 
@@ -153,7 +153,7 @@ class RetrievalEval(abc.ABC):
 
 		embedding_field = self.get_embedding_field_name()
 		query = {
-			"size": min(3 * k, 200),
+			"size": min(3 * k, 10000),
 			"query": {
 				"script_score": {
 					"query": {"match_all": {}},

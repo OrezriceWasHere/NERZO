@@ -41,7 +41,7 @@ def create_embedding(text, indices):
 	return embeddings
 
 
-def add_embedding_to_batch(batch):
+def add_embedding_to_batch(batch, llm, device, layers_and_keys_pairs):
 	all_texts = [x["all_text"] for x in batch]
 	distinct_text = list(set(all_texts))
 	tokens = llm.tokenize(distinct_text).to(device)
@@ -63,7 +63,6 @@ def add_embedding_to_batch(batch):
 		}
 
 	del hidden_values, text_to_embedding
-	torch.cuda.empty_cache()
 
 def process_batch(batch):
 	docs = []
@@ -104,7 +103,7 @@ def process_batch(batch):
 			tagging["all_text"] = all_text
 			tagging["text_id"] = text_id
 		docs.extend(tagging_array)
-	add_embedding_to_batch(docs)
+	add_embedding_to_batch(docs, llm, device, layers_and_keys_pairs)
 	# embedding = embeddings[tuple((tagging["index_start"], tagging["index_end"]))]
 	# tagging["embedding"] = embedding
 

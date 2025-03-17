@@ -52,20 +52,12 @@ elasticsearch_storage_mapping = {
 							"end": {
 								"type": "dense_vector",
 								"dims": 1024,
-								"index": "true",
-								"similarity": "cosine",
-								"index_options": {
-									"type": "flat"
-								}
+								"index": False
 							},
 							"start": {
 								"type": "dense_vector",
 								"dims": 1024,
-								"index": "true",
-								"similarity": "cosine",
-								"index_options": {
-									"type": "flat"
-								}
+								"index": False
 							}
 						}
 
@@ -76,20 +68,14 @@ elasticsearch_storage_mapping = {
 							"end": {
 								"type": "dense_vector",
 								"dims": 4096,
-								"index": "true",
-								"similarity": "cosine",
-								"index_options": {
-									"type": "flat"
-								}
+								"index": False
+
 							},
 							"start": {
 								"type": "dense_vector",
 								"dims": 4096,
-								"index": "true",
-								"similarity": "cosine",
-								"index_options": {
-									"type": "flat"
-								}
+								"index": False
+
 							}
 						}
 
@@ -100,20 +86,14 @@ elasticsearch_storage_mapping = {
 							"end": {
 								"type": "dense_vector",
 								"dims": 1024,
-								"index": "true",
-								"similarity": "cosine",
-								"index_options": {
-									"type": "flat"
-								}
+								"index": False
+
 							},
 							"start": {
 								"type": "dense_vector",
 								"dims": 1024,
-								"index": "true",
-								"similarity": "cosine",
-								"index_options": {
-									"type": "flat"
-								}
+								"index": False
+
 							}
 						}
 
@@ -124,20 +104,14 @@ elasticsearch_storage_mapping = {
 							"end": {
 								"type": "dense_vector",
 								"dims": 1024,
-								"index": "true",
-								"similarity": "cosine",
-								"index_options": {
-									"type": "flat"
-								}
+								"index": False
+
 							},
 							"start": {
 								"type": "dense_vector",
 								"dims": 1024,
-								"index": "true",
-								"similarity": "cosine",
-								"index_options": {
-									"type": "flat"
-								}
+								"index": False
+
 							}
 						}
 					}
@@ -149,7 +123,7 @@ elasticsearch_storage_mapping = {
 		"index": {
 			"max_inner_result_window": 1000000,
 			"number_of_shards": 20,
-			"number_of_replicas": 0,
+			"number_of_replicas": 0
 		}
 	}
 }

@@ -47,8 +47,7 @@ def calculate_ne_embedding(embedding_end, embedding_start):
 	embedding = embedding.to(device)
 	with torch.no_grad():
 		embedding = similarity_model(embedding)
-	embedding_norm = torch.nn.functional.normalize(embedding)
-	return embedding_norm
+	return embedding
 
 
 async def document_consumer(index, queue):
@@ -67,10 +66,12 @@ async def document_consumer(index, queue):
 			break
 		ids = [x["_id"] for x in records]
 		embedding_start = torch.tensor(
-			[item["_source"]["embedding"][args.llm_layer]["start"] for item in records], device=device
+			[item["_source"]["embedding"][args.llm_layer]["start"] for item in records], device=device,
+			dtype=torch.double,
 		).clone().detach()
 		embedding_end = torch.tensor(
-			[item["_source"]["embedding"][args.llm_layer]["end"] for item in records], device=device
+			[item["_source"]["embedding"][args.llm_layer]["end"] for item in records], device=device,
+			dtype=torch.double,
 		).clone().detach()
 		ne_embedding = calculate_ne_embedding(embedding_end, embedding_start)
 		batch = []
@@ -78,6 +79,8 @@ async def document_consumer(index, queue):
 			batch.append({"update": {"_index": index, "_id": doc_id}})
 			batch.append({"doc": {f"embedding.{mlp_id}": embedding.tolist()}, "doc_as_upsert": True})
 		x = await dataset_provider.bulk(batch)
+		if slow_down_intentially:
+			await asyncio.sleep(10)
 		assert not x["errors"], "erros occured during bulk query. response for first item: "
 		pbar.update(len(records))
 
@@ -96,11 +99,8 @@ async def ensure_existing_index(index_name):
 		f'embedding.{mlp_id}': {
 			"type": "dense_vector",
 			"dims": args.output_layer,
-			"index": "true",
-			"similarity": "cosine",
-			"index_options": {
-				"type": "flat"
-			}
+			"index": False
+
 		}
 
 	}
@@ -117,13 +117,18 @@ if __name__ == "__main__":
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
-	mlp_layer = {"layer_id": "31042a3689e340a08789b2b0cc48c71e"}
-	BATCH_SIZE = 2500
+	mlp_layer = {"layer_id": "a3dabcb099b1429d9eb0c9ef0f2bcd2b",
+	"slow_down_intentionally": False}
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
+	slow_down_intentially = mlp_layer["slow_down_intentionally"]
+	BATCH_SIZE = 2500
+	if slow_down_intentially:
+		BATCH_SIZE = 1
 	mlp_id = mlp_layer["layer_id"]
 	write_index = "nertrieve_test"
 
 	similarity_model = clearml_helper.get_mlp_by_id(mlp_id, device=device)
+	similarity_model = similarity_model.double()
 	similarity_model.eval()
 	args = clearml_helper.get_args_by_mlp_id(mlp_id)
 

@@ -44,10 +44,10 @@ async def write_to_elastic_worker(queue):
 		pbar.update(len(batch))
 
 
-async def write_batch(bulk):
+async def write_batch(bulk, id_generator=generate_id):
 	batch = []
 	for record, index in bulk:
-		doc_id = generate_id(record)
+		doc_id = id_generator(record)
 		batch.append({"update": {"_index": index, "_id": doc_id}})
 		batch.append({"doc": {**record, "doc_id": doc_id}, "doc_as_upsert": True})
 	await dataset_provider.bulk(batch)
@@ -103,10 +103,6 @@ if __name__ == "__main__":
 		requirements=["aiohttp", "aiofiles"],
 		queue_name='dsicsgpu'
 	)
-
-	print("sleeping for six hours")
-	six_hours = 6 * 3600
-	sleep(six_hours)
 
 
 	# Configuration constants

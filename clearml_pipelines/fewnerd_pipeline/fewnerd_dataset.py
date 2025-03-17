@@ -178,6 +178,8 @@ elasticsearch_storage_mapping = {
     },
     "settings": {
         "index": {
+            "number_of_replicas": 0,
+            "number_of_shards": 1,
             "max_inner_result_window": 1000000
         }
     }
@@ -262,11 +264,6 @@ def schema_llm_layer(size, layer_name):
     return {
         layer_name: {
             "type": "dense_vector",
-            "dims": size,
-            "index": "true",
-            "similarity": "cosine",
-            "index_options": {
-                "type": "flat"
-            }
+            "dims": size
         }
     }

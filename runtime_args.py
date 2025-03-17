@@ -28,7 +28,7 @@ class RuntimeArgs:
 class ElasticsearchConnection(BaseModel):
     hosts: list[str] = Field(default_factory=lambda:get_env("ELASTICSEARCH_HOSTS", "http://dsigpu07:9200").split(","))
     verify_certs: bool = False
-    request_timeout: int = 90
+    request_timeout: int = 270
     ssl_show_warn: bool = False
     max_retries: int = 10
     retry_on_timeout: bool = True

@@ -274,7 +274,7 @@ if __name__ == "__main__":
 	print('args are: ', json.dumps(mlp_args.__dict__, indent=4))
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-	model = ContrastiveMLP(mlp_args).to(device)
+	model = ContrastiveMLP(mlp_args).to(device).double()
 
 	similarity_criterion = ContrastiveLoss(loss_fn=mlp_args.loss_fn, margin=mlp_args.triplet_loss_margin)
 

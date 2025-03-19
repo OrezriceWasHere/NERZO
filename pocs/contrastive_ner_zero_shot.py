@@ -1,15 +1,13 @@
 import asyncio
 import dataclasses
 import json
-import uuid
 from collections import defaultdict
 from functools import partial
-import math
 import pandas as pd
 import clearml_poc
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from contrastive.args import Arguments, FineTuneLLM
-from contrastive.mlp import ContrastiveMLP, Detector
+from contrastive.mlp import ContrastiveMLP
 from contrastive.loss import ContrastiveLoss
 import torch
 from contrastive import fewnerd_processor, helper
@@ -21,7 +19,7 @@ from sklearn import metrics
 def main():
 	for e in trange(mlp_args.epochs):
 		train(e)
-		evaluate(e)
+		# evaluate(e)
 		upload_models(e)
 
 
@@ -85,7 +83,6 @@ async def one_type_epoch_training(fine_type, epoch):
 		types_optimizer.zero_grad()
 		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
 		anchor_tensor = layer_to_tensor_train[fine_type]
-		anchor_tensor = torch.concat((anchor_tensor, anchor_tensor), dim=-1)
 		for metric, value in similarity(types_model, anchor=anchor_tensor).items():
 			results[f'types_{metric}'].extend(value)
 
@@ -174,7 +171,6 @@ async def one_type_epoch_evaluation(fine_type, epoch):
 		prediction = partial(eval_predict, good_batch=good_batch, bad_batch=bad_batch)
 
 		anchor_tensor = layer_to_tensor_test[fine_type]
-		anchor_tensor = torch.concat((anchor_tensor, anchor_tensor), dim=-1)
 
 		for metric, value in similarity(types_model, anchor=anchor_tensor).items():
 			results[f'types_{metric}'].extend(value)

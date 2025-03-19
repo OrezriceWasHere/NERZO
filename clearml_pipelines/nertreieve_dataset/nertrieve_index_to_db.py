@@ -50,7 +50,7 @@ async def write_batch(bulk, id_generator=generate_id):
 		doc_id = id_generator(record)
 		batch.append({"update": {"_index": index, "_id": doc_id}})
 		batch.append({"doc": {**record, "doc_id": doc_id}, "doc_as_upsert": True})
-	await dataset_provider.bulk(batch)
+	return await dataset_provider.bulk(batch)
 
 
 async def load_json_task(dataset, queue):

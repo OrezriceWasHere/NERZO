@@ -26,7 +26,7 @@ class RuntimeArgs:
     running_remote: bool = is_key_enabled_in_env("RUNNING_REMOTE")
 
 class ElasticsearchConnection(BaseModel):
-    hosts: list[str] = Field(default_factory=lambda:get_env("ELASTICSEARCH_HOSTS", "http://dsigpu07:9200").split(","))
+    hosts: list[str] = Field(default_factory=lambda:get_env("ELASTICSEARCH_HOSTS", "http://dsigpu06:9200,http://dsigpu08:9200,http://dsigpu07:9200").split(","))
     verify_certs: bool = False
     request_timeout: int = 270
     ssl_show_warn: bool = False

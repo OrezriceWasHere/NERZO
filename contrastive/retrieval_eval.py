@@ -14,6 +14,16 @@ from clearml_pipelines.nertreieve_dataset import nertrieve_processor
 from contrastive.args import FineTuneLLM, Arguments
 
 
+def flatten_dict(d, parent_key='', sep='.'):
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k  # Construct new key
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())  # Recursively flatten
+        else:
+            items.append((new_key, v))  # Store key-value pair
+    return dict(items)
+
 class RetrievalEval(abc.ABC):
 
 
@@ -24,7 +34,7 @@ class RetrievalEval(abc.ABC):
 		self.embedding_per_type = entity_to_embedding
 		self.all_test_types = list(entity_to_embedding.keys())
 		self.entity_field = self.entity_type_field_name()
-		self.semaphore = asyncio.Semaphore(10)
+		self.semaphore = asyncio.Semaphore(1000)
 		self.text_id_to_labels = nertrieve_processor.text_id_to_labels()
 		self.entity_to_name = nertrieve_processor.type_to_name()
 
@@ -82,13 +92,13 @@ class RetrievalEval(abc.ABC):
 		sizes = [10, 50, count_type]
 		for doc_id in ids:
 			document = await self.get_item_by_id(doc_id, source=[embedding_field])
-			embedding = document[embedding_field]
+			embedding = flatten_dict(document)[embedding_field]
 			async with self.semaphore:
 				similar_doc = await self.search_similar_items(embedding, count_type + 1, entity_type)
 
 			for k in sizes:
 				top_k_results = self.top_k_ids(similar_doc, k + 1, pop_max=True)
-				assert len(top_k_results) == k - 1, f"could not fetch {k} docs for {entity_type}"
+				assert len(top_k_results) == k, f"could not fetch {k} docs for {entity_type}"
 				hits = [1 if entity_type in similar_doc[text_id]["labels"]
 				        else 0 for text_id in top_k_results]
 				recall = sum(hits) / k
@@ -96,7 +106,11 @@ class RetrievalEval(abc.ABC):
 				result[f"recall@{size_desc}"].append(recall)
 				self.pbar.update(1)
 			result["size"] = count_type
-		return result
+		avg_result = {
+			key: sum(values) / len(values)
+			for key, values in result.items()
+		}
+		return avg_result
 
 	def top_k_ids(self, data, k, pop_max=False):
 		top_k = sorted(data.items(), key=lambda x: x[1]["score"], reverse=True)
@@ -231,22 +245,25 @@ class RetrievalEval(abc.ABC):
 	async def get_count_entity_type(self, entity_type):
 		embedding_filed = self.get_embedding_field_name()
 		query = {
-			"size": 0,
-			"query": {
-				"bool": {
-					"must": [
-						{"term": {self.entity_field: entity_type}},
-						{"exists": {"field": embedding_filed}}
-					]
-				}
-			},
-			"aggs": {
-				"unique_text_ids": {
-					"cardinality": {
-						"field": "text_id"
-					}
-				}
-			}
+		  "size": 0,
+		  "query": {
+						"bool": {
+							"must": [
+								{"term": {self.entity_field: entity_type}},
+								{"exists": {"field": embedding_filed}}
+							]
+						}
+					},
+		  "aggs": {
+		    "unique_text_ids": {
+		      "scripted_metric": {
+		        "init_script": "state.text_ids = new HashSet();",
+		        "map_script": "state.text_ids.add(doc['text_id'].value);",
+		        "combine_script": "return state.text_ids;",
+		        "reduce_script": "Set all_ids = new HashSet(); for (s in states) { all_ids.addAll(s); } return all_ids.size();"
+		      }
+		    }
+		  }
 		}
 		x =  await dataset_provider.search_async(index=self.index, query=query)
 		return x["aggregations"]["unique_text_ids"]["value"]

@@ -199,7 +199,7 @@ if __name__ == "__main__":
 	loop = asyncio.get_event_loop()
 
 	device = torch.device("cuda")
-	for dataset in neretrieve_dataset.datasets:
+	for dataset in neretrieve_dataset.datasets[1:]:
 		loop.run_until_complete(main_process(dataset))
 	loop.close()
 

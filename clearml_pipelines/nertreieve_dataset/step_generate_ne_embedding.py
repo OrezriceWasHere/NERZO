@@ -23,7 +23,7 @@ def not_processed_documents_query():
 			}
 		},
 		"sort": [
-			{"text_id":"desc"},
+			{"text_id":"asc"},
 			"index_start"
 		],
 		"_source": [f"embedding.{args.llm_layer}.*", "entity_type"]
@@ -60,6 +60,8 @@ async def document_consumer(index, queue):
 	pbar = tqdm.tqdm(total=total_documents_to_produce)
 
 	await ensure_existing_index(index)
+	await dataset_provider.update_refresh_interval(index, "-1")
+	count_errors = 0
 	while True:
 		records = await queue.get()
 		if not records:
@@ -81,16 +83,29 @@ async def document_consumer(index, queue):
 		x = await dataset_provider.bulk(batch)
 		if slow_down_intentially:
 			await asyncio.sleep(10)
-		assert not x["errors"], "erros occured during bulk query. response for first item: "
 		pbar.update(len(records))
+		if x["errors"]:
+			await asyncio.sleep(2 ** count_errors)
+			count_errors += 1
+			print("erros occured during bulk query. response for first item: ")
+		else:
+			if count_errors > 0:
+				print("errors stopped")
+			count_errors = 0
+	await dataset_provider.update_refresh_interval(index, "30s")
 
 
-async def main():
+
+def main():
+	loop = asyncio.get_event_loop()
 	queue = asyncio.Queue(maxsize=100)
-	await asyncio.gather(
-		document_producer(write_index, queue),
-		document_consumer(write_index, queue)
-	)
+	for x in range(3):
+		loop.run_until_complete(asyncio.gather(
+			document_producer(write_index, queue),
+			document_consumer(write_index, queue)
+		))
+	loop.close()
+
 
 
 async def ensure_existing_index(index_name):
@@ -117,13 +132,11 @@ if __name__ == "__main__":
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
-	mlp_layer = {"layer_id": "a3dabcb099b1429d9eb0c9ef0f2bcd2b",
+	mlp_layer = {"layer_id": "6b11b974e63543eb942741562046c063",
 	"slow_down_intentionally": False}
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
 	slow_down_intentially = mlp_layer["slow_down_intentionally"]
 	BATCH_SIZE = 2500
-	if slow_down_intentially:
-		BATCH_SIZE = 1
 	mlp_id = mlp_layer["layer_id"]
 	write_index = "nertrieve_test"
 
@@ -132,6 +145,5 @@ if __name__ == "__main__":
 	similarity_model.eval()
 	args = clearml_helper.get_args_by_mlp_id(mlp_id)
 
-	loop = asyncio.get_event_loop()
-	loop.run_until_complete(main())
-	loop.close()
+	main()
+

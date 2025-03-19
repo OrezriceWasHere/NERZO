@@ -8,21 +8,21 @@ class Arguments:
 
     input_layer: int = 1024
     hidden_layer: int = 100
-    output_layer: int = 250
+    output_layer: int = 500
 
     is_hidden_layer: bool = False
-    batch_size: int = 20
+    batch_size: int = 50
     instances_per_type: int = 300
 
     llm_layer: str = "llama_3_17_v_proj"
 
-    input_tokens: str = "start_end_pair"  # [possible_values: "end", "start_end_pair", "diff"]
-    entity_name_embeddings: str = "avg"
+    input_tokens: str = "end"  # [possible_values: "end", "start_end_pair", "diff"]
+    entity_name_embeddings: str = "end"
 
     fine_tune_llm: bool = False
     disable_similarity_training: bool = False
 
-    hard_negative_ratio: float = 0.1
+    hard_negative_ratio: float = 0.2
 
     triplet_loss_margin: float = 0.5
     activation: str = "silu"

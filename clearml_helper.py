@@ -21,6 +21,7 @@ def get_mlp_by_id(mlp_id: str, device=None) -> ContrastiveMLP:
 		map_location=device
 		)
 	similarity_model.load_state_dict(local_mlp_head_model)
+	similarity_model = similarity_model.eval()
 	return similarity_model
 
 def get_args_by_mlp_id(mlp_id: str) -> Arguments:

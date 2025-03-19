@@ -1,6 +1,7 @@
 import clearml_helper
 import clearml_poc
 import dataset_provider
+import queries
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from clearml_pipelines.nertreieve_dataset import nertrieve_processor
 from contrastive import fewnerd_processor
@@ -314,7 +315,7 @@ if __name__ == '__main__':
 	clearml_poc.clearml_init(task_name='eval nertrieve', queue_name='dsicsgpu')
 
 	layer_obj = {
-		"layer_id": "ede0a2a2202441bfa50c3da5580a04b5",
+		"layer_id": "7b24211634fd454e99d34b65286ab4d7",
 		"llm_layer": FineTuneLLM.layer,
 		"llm_id": FineTuneLLM.llm_id
 	}
@@ -328,28 +329,26 @@ if __name__ == '__main__':
 			layer=llm_layer
 		),
 		index='nertrieve_entity_name_to_embedding',
-		entity_name_strategy=args.entity_name_embeddings
+		entity_name_strategy='avg'
 	)
 	layer = layer_obj['layer_id']
 	mlp = clearml_helper.get_mlp_by_id(layer)
 	mlp = mlp.double()
 
 	import torch
-	query = {"query":{"term":{"doc_id": 'nert_753418dbdd0ef1c8420511d2466825791a48050f'}}}
-	result = dataset_provider.search(query,'nertrieve_test')
-	source = torch.tensor(result["hits"]["hits"][0]["_source"]["embedding"]["llama_3_17_v_proj"]["end"], dtype=torch.double)
-	y = mlp(source)
 
 	type_to_name = nertrieve_processor.type_to_name()
 	entity_type_to_embedding = {
 		type_to_name[key]:mlp(value).tolist()
+	    # type_to_name[key]:value.tolist()
 
 		for key, value in entity_type_to_embedding.items()
 	}
+
 	layer = layer_obj["layer_id"]
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
 	nertrieve = NERtrieveEvalZeroShot(layer=layer, entity_to_embedding=entity_type_to_embedding)
-	# nertrieve.eval_one_shot()
-
+	nertrieve.eval_one_shot()
 	nertrieve.eval_zero_shot()
+

@@ -42,27 +42,31 @@ def create_embedding(text, indices):
 
 
 def add_embedding_to_batch(batch, llm, device, layers_and_keys_pairs):
-	all_texts = [x["all_text"] for x in batch]
-	distinct_text = list(set(all_texts))
-	tokens = llm.tokenize(distinct_text).to(device)
-	assert len(layers_and_keys_pairs) == 1, "supporting one layer at a time right now"
-	layers_and_keys_pair = layers_and_keys_pairs[0]
-	hidden_values = llm.get_llm_at_layer(tokens, layers_and_keys_pair[0])
-	db_name = layers_and_keys_pair[1]
-	text_to_embedding = {text: embedding for text, embedding in zip(distinct_text, hidden_values)}
-	for doc in batch:
-		h = text_to_embedding[doc["all_text"]]
-		llm_indices = llm.token_indices_given_text_indices(doc["all_text"], (doc["index_start"], doc["index_end"]))
-		start = h[llm_indices[0] - 1]
-		end = h[llm_indices[1]]
-		doc["embedding"] = {
-			db_name: {
-				"start": start.tolist(),
-				"end": end.tolist()
+	try:
+		all_texts = [x["all_text"] for x in batch]
+		distinct_text = list(set(all_texts))
+		tokens = llm.tokenize(distinct_text).to(device)
+		assert len(layers_and_keys_pairs) == 1, "supporting one layer at a time right now"
+		layers_and_keys_pair = layers_and_keys_pairs[0]
+		hidden_values = llm.get_llm_at_layer(tokens, layers_and_keys_pair[0])
+		db_name = layers_and_keys_pair[1]
+		text_to_embedding = {text: embedding for text, embedding in zip(distinct_text, hidden_values)}
+		for doc in batch:
+			h = text_to_embedding[doc["all_text"]]
+			llm_indices = llm.token_indices_given_text_indices(doc["all_text"], (doc["index_start"], doc["index_end"]))
+			start = h[llm_indices[0] - 1]
+			end = h[llm_indices[1]]
+			doc["embedding"] = {
+				db_name: {
+					"start": start.tolist(),
+					"end": end.tolist()
+				}
 			}
-		}
 
-	del hidden_values, text_to_embedding
+		del hidden_values, text_to_embedding
+	except:
+		print("could not generate embedding for batch {}".format(batch))
+		batch.clear()
 
 def process_batch(batch):
 	docs = []
@@ -123,14 +127,16 @@ async def write_to_file(queue, output_file):
 				continue
 			else:
 				processed_documents = process_batch(batch)
-				for document in processed_documents:
-					await file.write(json.dumps(document))
-					await file.write("\n")
+				if processed_documents:
+					for document in processed_documents:
+						await file.write(json.dumps(document))
+						await file.write("\n")
 				batch = []
 		if batch:
 			processed_documents = process_batch(batch)
-			for document in processed_documents:
-				await file.write(json.dumps(document)+"\n")
+			if processed_documents:
+				for document in processed_documents:
+					await file.write(json.dumps(document)+"\n")
 
 
 
@@ -157,17 +163,17 @@ async def main_process(dataset):
 	file_dir = dataset["json"]
 	# with open(file_dir, "w") as file:
 	await process_dataset(dataset["url"], file_dir)
-	tags = db_key + [dataset["env"]]
-	clearml_poc.add_tags(tags)
-
-	# file.write(json.dumps(processed_documents))
-	clearml_dataset = Dataset.create(dataset_name=file_dir, dataset_project="neretrieve_pipeline")
-	clearml_dataset.add_files(path=file_dir)
-	clearml_dataset.add_tags(tags)
-
-	# Dataset is uploaded to the ClearML Server by default
-	clearml_dataset.upload()
-	clearml_dataset.finalize()
+	# tags = db_key + [dataset["env"]]
+	# clearml_poc.add_tags(tags)
+	#
+	# # file.write(json.dumps(processed_documents))
+	# clearml_dataset = Dataset.create(dataset_name=file_dir, dataset_project="neretrieve_pipeline")
+	# clearml_dataset.add_files(path=file_dir)
+	# clearml_dataset.add_tags(tags)
+	#
+	# # Dataset is uploaded to the ClearML Server by default
+	# clearml_dataset.upload(show_progress=True, verbose=True, )
+	# clearml_dataset.finalize()
 
 
 if __name__ == "__main__":

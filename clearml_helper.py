@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from clearml import Task, Model
 from contrastive.args import FineTuneLLM, Arguments, dataclass_decoder
@@ -33,3 +35,14 @@ def get_args_by_mlp_id(mlp_id: str) -> Arguments:
 		args_dict = {key.replace("mlp_args/", ""): value for key, value in args_of_task.items() if "mlp_args" in key}
 	args: Arguments = dataclass_decoder(dct=args_dict, cls=Arguments)
 	return args
+
+def get_task_by_description(description: str, new_project:Optional[str] = None) -> Task:
+
+	tasks = Task.get_tasks(
+		task_name=description
+	)
+	assert tasks
+	task = sorted(tasks, key=lambda t: t.data.created, reverse=True)[0]
+	copy_task = Task.clone(task)
+	copy_task.move_to_project(new_project_name=new_project)
+	return copy_task

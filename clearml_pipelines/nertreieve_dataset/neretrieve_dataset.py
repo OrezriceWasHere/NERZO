@@ -122,7 +122,7 @@ elasticsearch_storage_mapping = {
 	"settings": {
 		"index": {
 			"max_inner_result_window": 1000000,
-			"number_of_shards": 20,
+			"number_of_shards": 60,
 			"number_of_replicas": 0
 		}
 	}

@@ -289,6 +289,7 @@ def schema_llm_layer(size, layer_name):
 	return {
 		layer_name: {
 			"type": "dense_vector",
-			"dims": size
+			"dims": size,
+			"index": "false"
 		}
 	}

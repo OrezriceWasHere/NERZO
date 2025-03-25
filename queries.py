@@ -221,6 +221,7 @@ def query_search_by_similarity(embedding, layer, default_filter_query=None):
     return {
         "script_score": {
             "query": filter_query,
+
             "script": {
                 "source": f"cosineSimilarity(params.query_vector, '{layer}') + 1.0",
                 "params": {

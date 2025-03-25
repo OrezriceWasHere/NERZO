@@ -50,7 +50,8 @@ async def write_batch(bulk, id_generator=generate_id):
 		doc_id = id_generator(record)
 		batch.append({"update": {"_index": index, "_id": doc_id}})
 		batch.append({"doc": {**record, "doc_id": doc_id}, "doc_as_upsert": True})
-	return await dataset_provider.bulk(batch)
+	x = await dataset_provider.bulk(batch)
+	return x
 
 
 async def load_json_task(dataset, queue):
@@ -61,6 +62,7 @@ async def load_json_task(dataset, queue):
 		dataset_tags=[dataset_tag_obj["dataset_tag"]],
 		dataset_project="neretrieve_pipeline"
 	).get_local_copy()
+	# dataset_dir = "/home/orsh/.clearml/venvs-builds/3.11/task_repository/NERZO.git/"
 
 	print(f"Processing dataset {env}")
 	index = f"nertrieve_{env}"
@@ -83,10 +85,10 @@ async def main():
 	worker_task = write_to_elastic_worker(queue)
 
 	dataset = {
-		"url": "https://storage.googleapis.com/neretrieve_dataset/IR/NERetrive_IR_test.jsonl.bz2",
-		"name": "retrieval-test-supervised.txt",
-		"json": "retrieval-test-supervised.json",
-		"env": "test"
+		"url": "https://storage.googleapis.com/neretrieve_dataset/IR/NERetrive_IR_train.jsonl.bz2",
+		"name": "retrieval-train-supervised.txt",
+		"json": "retrieval-train-supervised.json",
+		"env": "train"
 	}
 
 	# Gather all tasks

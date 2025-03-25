@@ -1,7 +1,5 @@
 import clearml_helper
 import clearml_poc
-import dataset_provider
-import queries
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from clearml_pipelines.nertreieve_dataset import nertrieve_processor
 from contrastive import fewnerd_processor
@@ -310,6 +308,9 @@ class NERtrieveEvalZeroShot(RetrievalEval):
 			                    'nert_4529d2a55cf29c7e820142d902382241917a4775']
 		}
 
+	def calc_text_id_to_labels(self):
+		return nertrieve_processor.text_id_to_labels()
+
 
 if __name__ == '__main__':
 	clearml_poc.clearml_init(task_name='eval nertrieve', queue_name='dsicsgpu')
@@ -317,7 +318,8 @@ if __name__ == '__main__':
 	layer_obj = {
 		"layer_id": "7b24211634fd454e99d34b65286ab4d7",
 		"llm_layer": FineTuneLLM.layer,
-		"llm_id": FineTuneLLM.llm_id
+		"llm_id": FineTuneLLM.llm_id,
+		"elasticsearch_index": 'nertrieve_test',
 	}
 	clearml_poc.clearml_connect_hyperparams(name='eval nertrieve', hyperparams=layer_obj)
 	llm_layer = layer_obj["llm_layer"]
@@ -329,7 +331,7 @@ if __name__ == '__main__':
 			layer=llm_layer
 		),
 		index='nertrieve_entity_name_to_embedding',
-		entity_name_strategy='avg'
+		entity_name_strategy=args.entity_name_embeddings
 	)
 	layer = layer_obj['layer_id']
 	mlp = clearml_helper.get_mlp_by_id(layer)
@@ -339,8 +341,8 @@ if __name__ == '__main__':
 
 	type_to_name = nertrieve_processor.type_to_name()
 	entity_type_to_embedding = {
-		type_to_name[key]:mlp(value).tolist()
-	    # type_to_name[key]:value.tolist()
+		# type_to_name[key]:mlp(value).tolist()
+	    type_to_name[key]:value.tolist()
 
 		for key, value in entity_type_to_embedding.items()
 	}
@@ -349,6 +351,6 @@ if __name__ == '__main__':
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
 	nertrieve = NERtrieveEvalZeroShot(layer=layer, entity_to_embedding=entity_type_to_embedding)
-	nertrieve.eval_one_shot()
 	nertrieve.eval_zero_shot()
+	nertrieve.eval_one_shot()
 

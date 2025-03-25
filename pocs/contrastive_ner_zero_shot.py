@@ -67,16 +67,16 @@ async def iterate_over_train(fine_type, similarity_strategy):
 
 async def one_type_epoch_training(fine_type, epoch):
 	results = defaultdict(list)
-	async for anchor, good_batch, bad_batch in iterate_over_train(fine_type, similarity_strategy='instance'):
-		instances_optimizer.zero_grad()
-		types_optimizer.zero_grad()
-		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
-
-		for metric, value in similarity(instances_model, anchor=anchor).items():
-			results[f'instances_{metric}'].extend(value)
-
-		instances_optimizer.step()
-		types_optimizer.step()
+	# async for anchor, good_batch, bad_batch in iterate_over_train(fine_type, similarity_strategy='instance'):
+	# 	instances_optimizer.zero_grad()
+	# 	types_optimizer.zero_grad()
+	# 	similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
+	#
+	# 	for metric, value in similarity(instances_model, anchor=anchor).items():
+	# 		results[f'instances_{metric}'].extend(value)
+	#
+	# 	instances_optimizer.step()
+	# 	types_optimizer.step()
 
 	async for anchor, good_batch, bad_batch in iterate_over_train(fine_type, similarity_strategy='type'):
 		instances_optimizer.zero_grad()

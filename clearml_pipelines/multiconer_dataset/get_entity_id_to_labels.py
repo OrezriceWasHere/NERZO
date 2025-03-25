@@ -10,8 +10,10 @@ if __name__ == "__main__":
 	task.name = "text id to all labels"
 
 	conf = {"layer_id": "7b24211634fd454e99d34b65286ab4d7",
-	"slow_down_intentionally": False,
-	"elasticsearch_index": "multiconer_validation,multiconer_test,multiconer_train"}
+		"slow_down_intentionally": False,
+		"index": "multiconer_validation,multiconer_test,multiconer_train",
+		"entity_type_key": "fine_type"
+	}
 
 	task.connect(conf, name="conf")
 	task.enqueue(task, queue_name="dsicsgpu")

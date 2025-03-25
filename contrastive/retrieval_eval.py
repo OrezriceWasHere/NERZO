@@ -1,13 +1,14 @@
 import abc
 import asyncio
 import random
+from sklearn.metrics import ndcg_score
 from collections import defaultdict
 import pandas as pd
 import torch
 from tqdm import tqdm
 import clearml_helper
 import dataset_provider
-import fewnerd_processor
+import contrastive.fewnerd_processor
 import clearml_poc
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from clearml_pipelines.nertreieve_dataset import nertrieve_processor
@@ -27,25 +28,27 @@ def flatten_dict(d, parent_key='', sep='.'):
 class RetrievalEval(abc.ABC):
 
 
-	def __init__(self, index, layer, entity_to_embedding: dict[str, torch.Tensor | list[float]]):
+	def __init__(self, index, layer, entity_to_embedding: dict[str, torch.Tensor | list[float]], is_bm25=False):
 		self.loop = asyncio.get_event_loop()
 		self.index = index
 		self.layer = layer
 		self.embedding_per_type = entity_to_embedding
 		self.all_test_types = list(entity_to_embedding.keys())
 		self.entity_field = self.entity_type_field_name()
-		self.semaphore = asyncio.Semaphore(1000)
-		self.text_id_to_labels = nertrieve_processor.text_id_to_labels()
-		self.entity_to_name = nertrieve_processor.type_to_name()
+		self.semaphore = asyncio.Semaphore(100)
+		self.text_id_to_labels = self.calc_text_id_to_labels()
+		self.is_bm25 = is_bm25
+
 
 	def eval_zero_shot(self):
 		zero_shot_tasks = self.generate_zero_shot_task()
-		self.pbar = tqdm(total=len(zero_shot_tasks) * 3)
+		self.pbar = tqdm(total=len(zero_shot_tasks))
 		self.execute_tasks(zero_shot_tasks, series='zero shot')
 
 	def eval_one_shot(self):
 		one_shot_tasks = self.generate_one_shot_task()
-		self.pbar = tqdm(total=len(one_shot_tasks) * 3 * 3)
+		total_amount = sum([len(x) for x in self.anchors().values()])
+		self.pbar = tqdm(total=total_amount)
 		self.execute_tasks(one_shot_tasks, series='one shot')
 
 
@@ -89,82 +92,90 @@ class RetrievalEval(abc.ABC):
 		embedding_field = self.get_embedding_field_name()
 		assert count_type > 0, "no count for entity type {}".format(entity_type)
 		result = defaultdict(list)
-		sizes = [10, 50, count_type]
+		sizes = [10, 50, 100,  200, 500, count_type]
+		descriptions = ["10", "50", "100", "200", "500", "size"]
 		for doc_id in ids:
-			document = await self.get_item_by_id(doc_id, source=[embedding_field])
+			document = await self.get_item_by_id(doc_id)
 			embedding = flatten_dict(document)[embedding_field]
+			phrase = document["phrase"]
 			async with self.semaphore:
-				similar_doc = await self.search_similar_items(embedding, count_type + 1, entity_type)
+				similar_doc = await self.search_similar_items(embedding, count_type + 1, entity_type, phrase)
 
-			for k in sizes:
-				top_k_results = self.top_k_ids(similar_doc, k + 1, pop_max=True)
-				assert len(top_k_results) == k, f"could not fetch {k} docs for {entity_type}"
-				hits = [1 if entity_type in similar_doc[text_id]["labels"]
-				        else 0 for text_id in top_k_results]
-				recall = sum(hits) / k
-				size_desc = k if k in [10, 50] else "size"
-				result[f"recall@{size_desc}"].append(recall)
-				self.pbar.update(1)
+			for size, size_desc in zip(sizes, descriptions):
+				k = min(size, count_type)
+				size_eval = self.evaluate(
+					similar_doc,
+					k,
+					size_desc,
+					entity_type,
+					count_type,
+					pop_max=False
+				)
+				for key, metric in size_eval.items():
+					result[key].append(metric)
+
 			result["size"] = count_type
 		avg_result = {
-			key: sum(values) / len(values)
+			key: (sum(values) / len(values) ) if isinstance(values, list) else values
 			for key, values in result.items()
 		}
 		return avg_result
-
-	def top_k_ids(self, data, k, pop_max=False):
-		top_k = sorted(data.items(), key=lambda x: x[1]["score"], reverse=True)
-		if pop_max:
-			top_k = top_k[1:k]
-		else:
-			top_k = top_k[:k]
-		return [key for key, _ in top_k]
 
 	async def zero_shot_task(self, entity_type):
 		count_type = await self.get_count_entity_type(entity_type)
 		assert count_type > 0, "no count for entity type {}".format(entity_type)
 		result = {}
-		sizes = [10, 50, count_type]
+		sizes = [10, 50, 100,  200, 500, count_type]
+		descriptions = ["10", "50", "100", "200", "500", "size"]
 		embedding = self.embedding_per_type[entity_type]
 		async with self.semaphore:
 			similar_doc = await self.search_similar_items(embedding, count_type, entity_type)
+		similar_doc = sorted(similar_doc.items(), key=lambda x: x[1]["score"], reverse=True)
 
-		for k in sizes:
-			top_k_results = self.top_k_ids(similar_doc, k, pop_max=False)
-			assert len(top_k_results) == k, f"could not fetch {k} docs for {entity_type}"
-			hits = [1 if entity_type in similar_doc[text_id]["labels"]
-			        else 0 for text_id in top_k_results]
-			recall = sum(hits) / k
-			size_desc = k if k in [10, 50] else "size"
-			result[f"recall@{size_desc}"] = recall
-			self.pbar.update(1)
+		for size, size_desc in zip(sizes, descriptions):
+			k = min(size, count_type)
+			size_eval = self.evaluate(
+				similar_doc,
+				k,
+				size_desc,
+				entity_type,
+				count_type,
+				pop_max=False
+			)
+			result.update(size_eval)
+
+
+		self.pbar.update(1)
 		result["size"] = count_type
 		return result
 
+	def evaluate(self, similar_doc, k, size_desc, entity_type,  count_type, pop_max=False):
+		result = {}
+		top_k_results = similar_doc[:k] if not pop_max else similar_doc[1: k + 1]
+		assert len(top_k_results) == k, f"could not fetch {size_desc} docs for {entity_type}"
+
+		hits = [1 if entity_type in results["labels"] else 0 for text_id, results in top_k_results]
+		cosine_similarities = [results["score"] - 1.0 for text_id, results in top_k_results]
+
+		recall = sum(hits) / count_type
+		result[f"recall@{size_desc}"] = recall
+		precision = sum(hits) / k
+		result[f"precision@{size_desc}"] = precision
+		result[f"nDSG@{size_desc}"] = ndcg_score([hits], [cosine_similarities], k=k)
+
+		return result
+
 	async def get_item_by_id(self, doc_id, **kwargs):
-		results = await dataset_provider.get_by_id(index_name=self.index, doc_id=doc_id)
-		return results["_source"]
+		query = {"query": {"term": {"doc_id": doc_id}}}
 
-	# async def recall_by_id(self, entity_type, fewnerd_id, k):
-	# 	embedding_field = self.get_embedding_field_name()
-	#
-	# 	document = await self.get_item_by_id(fewnerd_id, source=[embedding_field])
-	# 	embedding = document["_source"][embedding_field]
-	# 	similar_items = await self.search_similar_items(embedding, k, )
-	# 	returned_fine_types = [1 if item["_source"][self.entity_field] == entity_type else 0 for item in similar_items]
-	# 	return recall_score(y_true=[1] * k, y_pred=returned_fine_types)
-
-	async def recall_by_type(self, entity_type, k):
-		key = self.entity_type_field_name()
-
-	# return recall_score(y_true=[1] * k, y_pred=returned_fine_types)
+		results = await dataset_provider.search_async(index=self.index, query=query, **kwargs)
+		assert len(results["hits"]["hits"]) == 1
+		return results["hits"]["hits"][0]["_source"]
 
 	def get_embedding_field_name(self):
 		return f'embedding.{self.layer}'
 
-	async def search_similar_items(self, embedding, k, entity_type):
-		score_list = defaultdict(float)
-
+	def vector_query(self, embedding, k):
 		embedding_field = self.get_embedding_field_name()
 		query = {
 			"size": min(3 * k, 10000),
@@ -183,37 +194,51 @@ class RetrievalEval(abc.ABC):
 				{"doc_id": "asc"}
 			]
 		}
-		# query = {
-		# 	"size": min(3 * k, 5000),
-		#
-		# 	"query": {
-		# 		"bool": {
-		# 			"must": [
-		# 				{"match_all": {}}
-		# 			],
-		# 			"should": [
-		# 				{
-		# 					"function_score": {
-		# 						"query": {
-		# 							"match": {
-		# 								"all_text": entity_type,
-		# 							}
-		# 						},
-		# 						"boost_mode": "replace"
-		# 					}
-		# 				}
-		# 			]
-		# 		}
-		#
-		# 	},
-		#
-		# 	"_source": ["text_id", "fine_type", "entity_type"],
-		# 	"sort": [
-		# 		{"_score": "desc"},
-		# 		{"doc_id": "asc"}
-		# 	]
-		#
-		# }
+		return query
+
+	def bm25_query(self, k, entity_type, phrase):
+		text_to_look_by = phrase or entity_type
+		query = {
+			"size": min(3 * k, 5000),
+
+			"query": {
+				"bool": {
+					"must": [
+						{"match_all": {}}
+					],
+					"should": [
+						{
+							"function_score": {
+								"query": {
+									"match": {
+										"all_text": text_to_look_by,
+									}
+								},
+								"boost_mode": "replace"
+							}
+						}
+					]
+				}
+
+			},
+
+			"_source": ["text_id", "fine_type", "entity_type"],
+			"sort": [
+				{"_score": "desc"},
+				{"doc_id": "asc"}
+			]
+
+		}
+		return query
+
+	async def search_similar_items(self, embedding, k, entity_type, phrase=None):
+		score_list = defaultdict(float)
+
+		if self.is_bm25:
+			query = self.bm25_query(k, entity_type, phrase)
+		else:
+			query = self.vector_query(embedding, k)
+
 		async for batch in dataset_provider.consume_big_query(query=query, index=self.index):
 			if len(score_list) == k:
 				break
@@ -226,21 +251,6 @@ class RetrievalEval(abc.ABC):
 		return {text_id: {"labels": self.text_id_to_labels[text_id], "score": score_list[text_id]} for text_id in
 		        score_list}
 
-	# query_get_entity_type = {
-	# 	"size": 3 * len(unique_ids),
-	# 	"query":{
-	# 		"terms":{
-	# 			"text_id": list(unique_ids)
-	# 		}
-	# 	},
-	# 	"_source": ["text_id", self.entity_type_field_name()],
-	# 	"sort": ["text_id"]
-	# }
-	# answer = defaultdict(list)
-	# async for batch in dataset_provider.consume_big_query(query=query_get_entity_type, index=self.index):
-	# 	for item in batch:
-	# 		answer[item["_source"]["text_id"]].append(item)
-	# return answer
 
 	async def get_count_entity_type(self, entity_type):
 		embedding_filed = self.get_embedding_field_name()
@@ -272,6 +282,9 @@ class RetrievalEval(abc.ABC):
 		raise NotImplementedError()
 
 	def entity_type_field_name(self):
+		raise NotImplementedError()
+
+	def calc_text_id_to_labels(self):
 		raise NotImplementedError()
 
 

@@ -19,7 +19,6 @@ def not_processed_documents_query():
 				"must_not": [
 					{"exists": {"field": f"embedding.{mlp_id}"}},
 				]
-
 			}
 		},
 		"sort": [
@@ -59,26 +58,30 @@ async def document_consumer(index, queue):
 	total_documents_to_produce = await dataset_provider.count(index, search_query)
 	pbar = tqdm.tqdm(total=total_documents_to_produce)
 
-	await ensure_existing_index(index)
-	await dataset_provider.update_refresh_interval(index, "-1")
+	for elastic_index in index.split(","):
+		await ensure_existing_index(elastic_index)
+		await dataset_provider.update_refresh_interval(elastic_index, "30s")
 	count_errors = 0
 	while True:
 		records = await queue.get()
 		if not records:
 			break
 		ids = [x["_id"] for x in records]
+		document_index = [x["_index"] for x in records]
 		embedding_start = torch.tensor(
-			[item["_source"]["embedding"][args.llm_layer]["start"] for item in records], device=device,
-			dtype=torch.double,
+			[item["_source"]["embedding"][args.llm_layer]["start"] for item in records],
+			device=device,
+			dtype=torch.double
 		).clone().detach()
 		embedding_end = torch.tensor(
-			[item["_source"]["embedding"][args.llm_layer]["end"] for item in records], device=device,
-			dtype=torch.double,
+			[item["_source"]["embedding"][args.llm_layer]["end"] for item in records],
+			device=device,
+			dtype=torch.double
 		).clone().detach()
 		ne_embedding = calculate_ne_embedding(embedding_end, embedding_start)
 		batch = []
-		for doc_id, embedding in zip(ids, ne_embedding):
-			batch.append({"update": {"_index": index, "_id": doc_id}})
+		for doc_id, embedding, doc_index in zip(ids, ne_embedding, document_index):
+			batch.append({"update": {"_index": doc_index, "_id": doc_id}})
 			batch.append({"doc": {f"embedding.{mlp_id}": embedding.tolist()}, "doc_as_upsert": True})
 		x = await dataset_provider.bulk(batch)
 		if slow_down_intentially:
@@ -92,7 +95,6 @@ async def document_consumer(index, queue):
 			if count_errors > 0:
 				print("errors stopped")
 			count_errors = 0
-	await dataset_provider.update_refresh_interval(index, "30s")
 
 
 
@@ -126,23 +128,23 @@ if __name__ == "__main__":
 	runtime_args = RuntimeArgs()
 	fine_tune_llm = FineTuneLLM()
 	clearml_poc.clearml_init(
-		project_name="neretrieve_pipeline", task_name="Pipeline step 4 calculate ne embedding",
+		project_name="neretrieve_pipeline", task_name="Pipeline step 4 calculate ne embedding nertrieve",
 		queue_name="dsicsgpu"
 	)
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
 	mlp_layer = {"layer_id": "6b11b974e63543eb942741562046c063",
-	"slow_down_intentionally": False}
+	"slow_down_intentionally": False,
+	"elasticsearch_index": "nertrieve_test"}
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
 	slow_down_intentially = mlp_layer["slow_down_intentionally"]
 	BATCH_SIZE = 2500
 	mlp_id = mlp_layer["layer_id"]
-	write_index = "nertrieve_test"
+	write_index = mlp_layer["elasticsearch_index"]
 
 	similarity_model = clearml_helper.get_mlp_by_id(mlp_id, device=device)
 	similarity_model = similarity_model.double()
-	similarity_model.eval()
 	args = clearml_helper.get_args_by_mlp_id(mlp_id)
 
 	main()

@@ -5,7 +5,7 @@ import os.path
 from dataclasses import asdict
 from typing import Optional
 from tqdm import tqdm
-from clearml_pipelines.entity_name_to_embedding.index_entity_names_pipeline import step_create_embedding
+from clearml_pipelines.entity_name_to_embedding.index_entity_names_pipeline import step_create_embedding, step_index_to_elastic
 import dataset_provider
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from clearml.automation.controller import PipelineDecorator
@@ -166,7 +166,7 @@ def index_to_db(llm_id: str):
 		return f"multiconer_{hash_v}"
 
 	async def document_producer(mapping, queue):
-		envs = ["train", "validation", "test"]
+		envs = ["validation",  "test", "train"]
 
 		for env in envs:
 			index = f'multiconer_{env}'
@@ -198,6 +198,7 @@ def index_to_db(llm_id: str):
 			if len(bulk) >= BATCH_SIZE:
 				x = await nertrieve_index_to_db.write_batch(bulk, id_generator=doc_id_generator_function)
 				pbar.update(len(bulk))
+				bulk = []
 
 		if bulk:
 			await nertrieve_index_to_db.write_batch(bulk, id_generator=doc_id_generator_function)
@@ -232,7 +233,7 @@ def executing_pipeline(
 		):
 	print("pipeline args:", llm_id, layer)
 	# step_forward_in_llm(db_layer_name=args.llm_layer, llm_id=llm_id, layer=layer, max_llm_layer=max_llm_layer)
-	result = index_to_db(llm_id)
+	# result = index_to_db(llm_id)
 
 	fine_type_to_name = {
 		"OtherLOC": "Location - Other",
@@ -295,12 +296,17 @@ def executing_pipeline(
 		fine_type: fine_type_to_name.get(fine_type, None) or fine_type
 		for fine_type in fine_type_to_coarse_type
 	}
-	step_create_embedding(
+	embedding_of_names = step_create_embedding(
 		llm_id=llm_id,
 		layer=layer,
 		max_llm_layer=max_llm_layer,
 		entities_to_names=entity_types_to_names,
 	)
+	index_to_write = "multiconer_entity_name_to_embedding"
+	step_index_to_elastic(
+		index=index_to_write,
+		embeddings_json=embedding_of_names)
+
 
 
 if __name__ == "__main__":
@@ -308,7 +314,7 @@ if __name__ == "__main__":
 	# PipelineDecorator.set_default_execution_queue('default')
 	# Run the pipeline steps as subprocesses on the current machine, great for local executions
 	# (for easy development / debugging, use `PipelineDecorator.debug_pipeline()` to execute steps as regular functions)
-	PipelineDecorator.run_locally()
+	PipelineDecorator.debug_pipeline()
 	llm_args = FineTuneLLM()
 	args = Arguments()
 

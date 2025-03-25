@@ -6,7 +6,7 @@ from tqdm import tqdm
 from clearml import StorageManager, Dataset
 from bz2 import decompress
 import clearml_poc
-from clearml_pipelines.nertreieve_dataset import neretrieve_dataset
+from clearml_pipelines.nertreieve_dataset import neretrieve_dataset, nertrieve_index_to_db
 from contrastive.args import Arguments, FineTuneLLM
 from llm_interface import LLMInterface
 
@@ -21,10 +21,15 @@ async def split_into_document(dataset_file, queue):
 		async for line in f:
 			pbar.update(1)
 			doc = json.loads(line)
-			await queue.put(doc)
+			process_doc = process_batch([doc])
+			for result in process_doc:
+				await queue.put(result)
+
 	await queue.put(None)
 
-REMOVEING_CHARACTERS = [",", ".",";", ")", "(" ]
+
+REMOVEING_CHARACTERS = [",", ".", ";", ")", "("]
+
 
 def create_embedding(text, indices):
 	tokens = llm.tokenize(text).to(device)
@@ -43,28 +48,33 @@ def create_embedding(text, indices):
 
 
 def add_embedding_to_batch(batch):
-	all_texts = [x["all_text"] for x in batch]
-	distinct_text = list(set(all_texts))
-	tokens = llm.tokenize(distinct_text).to(device)
-	assert len(layers_and_keys_pairs) == 1, "supporting one layer at a time right now"
-	layers_and_keys_pair = layers_and_keys_pairs[0]
-	hidden_values = llm.get_llm_at_layer(tokens, layers_and_keys_pair[0])
-	db_name = layers_and_keys_pair[1]
-	text_to_embedding = {text: embedding for text, embedding in zip(distinct_text, hidden_values)}
-	for doc in batch:
-		h = text_to_embedding[doc["all_text"]]
-		llm_indices = llm.token_indices_given_text_indices(doc["all_text"], (doc["index_start"], doc["index_end"]))
-		start = h[llm_indices[0] - 1]
-		end = h[llm_indices[1]]
-		doc["embedding"] = {
-			db_name: {
-				"start": start.tolist(),
-				"end": end.tolist()
+	try:
+		all_texts = [x["all_text"] for x in batch]
+		distinct_text = list(set(all_texts))
+		tokens = llm.tokenize(distinct_text).to(device)
+		assert len(layers_and_keys_pairs) == 1, "supporting one layer at a time right now"
+		layers_and_keys_pair = layers_and_keys_pairs[0]
+		hidden_values = llm.get_llm_at_layer(tokens, layers_and_keys_pair[0])
+		db_name = layers_and_keys_pair[1]
+		text_to_embedding = {text: embedding for text, embedding in zip(distinct_text, hidden_values)}
+		for doc in batch:
+			h = text_to_embedding[doc["all_text"]]
+			llm_indices = llm.token_indices_given_text_indices(doc["all_text"], (doc["index_start"], doc["index_end"]))
+			start = h[llm_indices[0] - 1]
+			end = h[llm_indices[1]]
+			doc["embedding"] = {
+				db_name: {
+					"start": start.tolist(),
+					"end": end.tolist()
+				}
 			}
-		}
-
+	except Exception as e:
+		print(f"error for batch. batch: {json.dumps(batch)}. \n error: {e}")
+		batch.clear()
 	del hidden_values, text_to_embedding
-	# torch.cuda.empty_cache()
+
+
+# torch.cuda.empty_cache()
 
 
 def process_batch(batch):
@@ -87,19 +97,17 @@ def process_batch(batch):
 						index_end = index_start + len(
 							" ".join(document_token_sequence[min(reference):max(reference) + 1])
 						)
-						if index_start == index_end:
-							print(f'index start and end. {index_start}, {index_end}, phrase {phrase}, reference {reference}, entity {tagging_type}, all text {all_text}')
-						else:
+						if index_start != index_end:
 							tagging_array.append(
-									{
-										"phrase": phrase,
-										"entity_type": tagging_type,
-										"entity_id": tagging_instance,
-										"index_in_text": reference,
-										"index_start": index_start,
-										"index_end": index_end
-									}
-								)
+								{
+									"phrase": phrase,
+									"entity_type": tagging_type,
+									"entity_id": tagging_instance,
+									"index_in_text": reference,
+									"index_start": index_start,
+									"index_end": index_end
+								}
+							)
 		if not tagging_array:
 			continue
 		distinct_indices = {tuple((tagging["index_start"], tagging["index_end"])) for tagging in tagging_array}
@@ -109,33 +117,31 @@ def process_batch(batch):
 			tagging["all_text"] = all_text
 			tagging["text_id"] = text_id
 		docs.extend(tagging_array)
-	add_embedding_to_batch(docs)
+	# add_embedding_to_batch(docs)
 	# embedding = embeddings[tuple((tagging["index_start"], tagging["index_end"]))]
 	# tagging["embedding"] = embedding
 
 	return docs
 
 
-async def write_to_file(queue, output_file):
-	async with aiofiles.open(output_file, "w") as file:
-		batch = []
-		while True:
-			document = await queue.get()
-			if not document:
-				break
-			if len(batch) < BATCH_SIZE:
-				batch.append(document)
-				continue
-			else:
-				processed_documents = process_batch(batch)
-				for document in processed_documents:
-					await file.write(json.dumps(document))
-					await file.write("\n")
-				batch = []
-		if batch:
-			processed_documents = process_batch(batch)
-			for document in processed_documents:
-				await file.write(json.dumps(document) + "\n")
+async def write_to_elasticsearch(queue, output_file):
+	index = "nertrieve_train"
+
+	batch = []
+	while True:
+		document = await queue.get()
+		if document is None:
+			break
+		if not document:
+			continue
+		if len(batch) < BATCH_SIZE:
+			batch.append((document, index))
+			continue
+		else:
+			await nertrieve_index_to_db.write_batch(batch)
+			batch = []
+	if batch:
+		await nertrieve_index_to_db.write_batch(batch)
 
 
 async def process_dataset(dataset_url, output_file):
@@ -151,7 +157,7 @@ async def process_dataset(dataset_url, output_file):
 
 	await asyncio.gather(
 		split_into_document(uncompressed_file, queue),
-		write_to_file(queue, output_file)
+		write_to_elasticsearch(queue, output_file)
 	)
 
 
@@ -191,19 +197,16 @@ def load_corpus():
 	return result
 
 
-
-
-
-
 if __name__ == "__main__":
 	clearml_poc.clearml_init(
 		project_name="neretrieve_pipeline",
 		task_name="Pipeline step 2 jsonify dataset",
 		requirements=[
 			"bitsandbytes >=0.43.2"
-		]
+		],
+		queue_name='dsicsgpu'
 	)
-	BATCH_SIZE = 6
+	BATCH_SIZE = 5000
 	args = Arguments()
 	clearml_poc.clearml_connect_hyperparams(args, "general")
 	llm_args = FineTuneLLM()
@@ -214,21 +217,21 @@ if __name__ == "__main__":
 	db_key = [args.llm_layer]
 
 	layers_and_keys_pairs = list(zip(interested_layers, db_key))
-	llm = LLMInterface(
-		llm_id=llm_id,
-		interested_layers=list(interested_layers),
-		max_llm_layer=llm_args.max_llm_layer
-	)
+	# llm = LLMInterface(
+	# 	llm_id=llm_id,
+	# 	interested_layers=list(interested_layers),
+	# 	max_llm_layer=llm_args.max_llm_layer
+	# )
 	assert torch.cuda.is_available()
 	loop = asyncio.get_event_loop()
 
 	device = torch.device("cuda")
 	datasets = [
 		{
-			"url": "https://storage.googleapis.com/neretrieve_dataset/IR/NERetrive_IR_test.jsonl.bz2",
-			"name": "retrieval-test-supervised.txt",
-			"json": "retrieval-test-supervised.json",
-			"env": "retrieval_test"
+			"url": "https://storage.googleapis.com/neretrieve_dataset/IR/NERetrive_IR_train.jsonl.bz2",
+			"name": "retrieval-train-supervised.txt",
+			"json": "retrieval-train-supervised.json",
+			"env": "retrieval_train"
 		},
 	]
 

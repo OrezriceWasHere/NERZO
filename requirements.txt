@@ -5,7 +5,7 @@ clearml
 openai
 scikit-learn
 pandas
-transformers>=4.45
+transformers==4.46.2
 huggingface_hub
 bitsandbytes
 accelerate

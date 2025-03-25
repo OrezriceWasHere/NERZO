@@ -30,12 +30,12 @@ pipe = PipelineController(
 pipe.add_parameter(
     name='mlp_head',
     description='MLP head id',
-    default='6b11b974e63543eb942741562046c063'
+    default='ede0a2a2202441bfa50c3da5580a04b5'
 )
 
 pipe.add_step(
     name="stage_generate_ne_embedding",
-	base_task_id='1dfe63a8766b49a2bcdc575fcdd76a54',
+	base_task_id='e96e4ae99b434f6eab4bcb6d0eb4de9f',
     pre_execute_callback=pre_execute_callback_example,
     post_execute_callback=post_execute_callback_example,
 	parameter_override={

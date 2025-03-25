@@ -18,7 +18,7 @@ def clearml_allowed(func):
 def clearml_init(project_name=None, task_name=None, requirements=None, queue_name=None):
     global execution_task, output_model
     Task.add_requirements('bitsandbytes', '>=0.43.2')
-    Task.add_requirements('transformers', '>=4.45.0')
+    Task.add_requirements('transformers', '==4.46.2')
     Task.add_requirements('torch', '==2.4.0')
     Task.add_requirements('aiohttp')
     requirements = requirements or []
@@ -52,6 +52,11 @@ def add_requirement(requirement, version=''):
 def clearml_connect_hyperparams(hyperparams, name="general"):
     if hyperparams:
         execution_task.connect(hyperparams, name=name)
+
+@clearml_allowed
+def get_project_name():
+    global execution_task
+    project_name = execution_task.project
 
 @clearml_allowed
 def download_model(model_id):

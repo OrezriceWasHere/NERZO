@@ -74,7 +74,7 @@ def step_index_to_elastic(embeddings_json: list[dict], 	index = "fewnerd_entity_
 	import dataset_provider
 	print("step_index_to_elastic")
 	loop = asyncio.get_event_loop()
-	loop.run_until_complete(
+	x = loop.run_until_complete(
 		dataset_provider.ensure_existing_index(index, fewnerd_dataset.elasticsearch_fine_type_to_embedding)
 		)
 
@@ -86,7 +86,7 @@ def step_index_to_elastic(embeddings_json: list[dict], 	index = "fewnerd_entity_
 
 	index_to_elastic_tasks = [dataset_provider.upsert(data=embedding, index=index, doc_id=embedding["entity_id"]) for
 	                          embedding in embeddings_json]
-	loop.run_until_complete(asyncio.gather(*index_to_elastic_tasks))
+	result = loop.run_until_complete(asyncio.gather(*index_to_elastic_tasks))
 
 	loop.close()
 

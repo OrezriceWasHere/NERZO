@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import asdict
 import torch
 import clearml_poc
+import dataset_provider
 from clearml_pipelines.general.elastic_async_helpers import EmbedderEnricher
 from contrastive.args import FineTuneLLM
 from llm_interface import LLMInterface
@@ -25,30 +26,35 @@ class LLama317SentenceEnricher(EmbedderEnricher):
 		self.layer = layer
 		self.db_name = "llama_3_17_v_proj"
 
+
 	def generate_embedding_batch(self, batch):
-		texts = list(set([item["_source"][self.text_field] for item in batch]))
+		eos_token = self.model.tokenizer.eos_token
+		texts = list(set([item["_source"][self.text_field] + eos_token for item in batch]))
 		tokens = self.model.tokenize(texts).to('cuda')
 		embeddings = self.model.get_llm_at_layer(tokens, layer=self.layer)
 		text_to_embedding = {text: encoding for text, encoding in zip(texts, embeddings)}
 		bulk = []
 		for doc in batch:
-			text = doc["_source"]["all_text"]
+			text = doc["_source"][self.text_field] + eos_token
 			indices = (doc["_source"]["index_start"], doc["_source"]["index_end"])
-			h = text_to_embedding[doc["_source"][self.text_field]]
+			h = text_to_embedding[text]
 			llm_indices = self.model.token_indices_given_text_indices(text, indices)
+			index_of_eos = self.model.tokens_count(text) - 1
 			start = h[llm_indices[0] - 1]
 			end = h[llm_indices[1]]
+			eos = h[index_of_eos]
 			result = {
 				"embedding": {
 					self.db_name: {
 						"start": start.tolist(),
-						"end": end.tolist()
+						"end": end.tolist(),
+						"eos": eos.tolist()
 					}
 				}
 			}
 
 			bulk.append({"update": {"_index": doc["_index"], "_id": doc["_id"]}})
-			bulk.append({"doc": result, "doc_as_upsert": True})
+			bulk.append({"doc": result})
 		return bulk
 
 
@@ -70,6 +76,23 @@ def forward_sentence_embedder_in_index(
 		sentence_embedder_id=llm_id,
 		layer=layer
 	)
+	embedding_field = {
+		"embedding": {
+			"properties": {
+				"llama_3_17_v_proj": {
+					"properties": {
+						"eos": {
+							"type": "dense_vector",
+							"dims": 1024,
+							"index": False
+						}
+					}
+				}
+			}
+		}
+
+	}
+	loop.run_until_complete(dataset_provider.ensure_field(index_name=elastic_index, field_mapping=embedding_field))
 	queue = asyncio.Queue(maxsize=10000)
 	BATCH_SIZE = 200
 
@@ -81,7 +104,7 @@ def forward_sentence_embedder_in_index(
 					batch_size=BATCH_SIZE,
 					fields_to_sort=fields_to_sort,
 					filter_query=filter_query
-					),
+				),
 				sentence_embedder_enricher.generate_embedding_task(
 					queue=queue
 				)
@@ -100,7 +123,7 @@ def executing_pipeline(
 		**kwargs
 ):
 	assert torch.cuda.is_available(), "no cuda"
-	embedding_field_name = "embedding.llama_3_17_v_proj.end"
+	embedding_field_name = "embedding.llama_3_17_v_proj.eos"
 	forward_sentence_embedder_in_index(
 		elastic_index=dataset_index,
 		embedding_field_name=embedding_field_name,
@@ -119,7 +142,7 @@ if __name__ == "__main__":
 	)
 
 	conf = {
-		"dataset_index": "nertrieve_train",
+		# "dataset_index": "nertrieve_train",
 		"naming_index": "nertrieve_entity_name_to_embedding",
 		"db_name": "embedding.llama_3_17_v_proj"
 	}

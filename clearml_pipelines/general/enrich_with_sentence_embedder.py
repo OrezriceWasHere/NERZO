@@ -48,7 +48,7 @@ def forward_sentence_embedder_in_index(
 	                                                           layer_name=output_field_name)
 	loop.run_until_complete(dataset_provider.ensure_field(elastic_index, embedding_field_mapping))
 	queue = asyncio.Queue(maxsize=10000)
-	BATCH_SIZE = 100
+	BATCH_SIZE = 500
 
 	for _ in range(5):
 
@@ -99,9 +99,9 @@ if __name__ == "__main__":
 	)
 
 	conf = {
-		"dataset_index": "nertrieve_test",
+		"dataset_index": "netrieve_train",
 		"naming_index": "nertrieve_entity_name_to_embedding",
-		"sentence_embedder_id": "nvidia/NV-Embed-v2"
+		"sentence_embedder_id": "intfloat/e5-mistral-7b-instruct"
 	}
 
 	clearml_poc.clearml_connect_hyperparams(conf, "conf")

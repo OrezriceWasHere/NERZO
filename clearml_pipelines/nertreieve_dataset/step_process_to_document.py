@@ -149,7 +149,7 @@ async def process_dataset(dataset_url, output_file):
 	with open(source_file, 'rb') as source, open(uncompressed_file, 'w') as dest:
 		dest.write(decompress(source.read()).decode('utf-8'))
 	print("processing dataset...")
-	queue = asyncio.Queue(1000)
+	queue = asyncio.Queue(10000)
 
 	await asyncio.gather(
 		split_into_document(uncompressed_file, queue),

@@ -1,5 +1,7 @@
 import clearml_helper
 import clearml_poc
+import dataset_provider
+import queries
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from clearml_pipelines.nertreieve_dataset import nertrieve_processor
 from contrastive import fewnerd_processor
@@ -20,7 +22,7 @@ class NERtrieveEvalZeroShot(RetrievalEval):
 		return 'entity_type'
 
 	def get_embedding_field_name(self):
-		return 'embedding.llama_3_17_v_proj.end'
+		return 'nvidia/nv-embed-v2@output'
 
 	def anchors(self):
 		return {
@@ -325,32 +327,41 @@ if __name__ == '__main__':
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
 	args = clearml_helper.get_args_by_mlp_id(layer_obj['layer_id'])
-	entity_type_to_embedding = fewnerd_processor.load_entity_name_embeddings(
-		layer_name=fewnerd_dataset.llm_and_layer_to_elastic_name(
-			llm_id=llm_id,
-			layer=llm_layer
-		),
-		index='nertrieve_entity_name_to_embedding',
-		entity_name_strategy=args.entity_name_embeddings
-	)
+	# entity_type_to_embedding = fewnerd_processor.load_entity_name_embeddings(
+	# 	layer_name=fewnerd_dataset.llm_and_layer_to_elastic_name(
+	# 		llm_id=llm_id,
+	# 		layer=llm_layer
+	# 	),
+	# 	index='nertrieve_entity_name_to_embedding',
+	# 	entity_name_strategy=args.entity_name_embeddings
+	# )
+	# entity_type_to_embedding = {
+	#     type_to_name[key]:value.tolist()
+	#
+	# 	for key, value in entity_type_to_embedding.items()
+	# }
+	type_to_name = nertrieve_processor.type_to_name()
+	entity_type_to_embedding = dataset_provider.search(query={"query":{"match_all": {}}}, index="nertrieve_entity_name_to_embedding",size=200)
+	# entity_name_to_embedding = {
+	# 	item["_source"]["entity_description"]: item["_source"]["nvidia/nv-embed-v2@output"]
+	# 	for item in entity_type_to_embedding["hits"]["hits"]
+	# }
 	layer = layer_obj['layer_id']
 	mlp = clearml_helper.get_mlp_by_id(layer)
 	mlp = mlp.double()
 
-	import torch
+	# query = queries.query_search_by_similarity(
+	# 	embedding=entity_name_to_embedding["Bird"],
+	# 	layer='nvidia/nv-embed-v2@output'
+	# )
+	# query = {"query": query}
+	# results = dataset_provider.search(query=query, index="nertrieve_test", size=200)
 
-	type_to_name = nertrieve_processor.type_to_name()
-	entity_type_to_embedding = {
-		# type_to_name[key]:mlp(value).tolist()
-	    type_to_name[key]:value.tolist()
-
-		for key, value in entity_type_to_embedding.items()
-	}
 
 	layer = layer_obj["layer_id"]
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
-	nertrieve = NERtrieveEvalZeroShot(layer=layer, entity_to_embedding=entity_type_to_embedding)
+	nertrieve = NERtrieveEvalZeroShot(layer=layer, entity_to_embedding=entity_name_to_embedding)
 	nertrieve.eval_zero_shot()
 	nertrieve.eval_one_shot()
 

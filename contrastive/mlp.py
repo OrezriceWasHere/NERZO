@@ -29,7 +29,7 @@ class ContrastiveMLP(torch.nn.Module):
         return self.net(x)
 
     def __calc_input_size(self, args: Arguments):
-        if args.input_tokens == "start_end_pair":
+        if args.input_tokens == "start_end_pair" or args.input_tokens == "start_eos_pair":
             return args.input_layer * 2
         return args.input_layer
 

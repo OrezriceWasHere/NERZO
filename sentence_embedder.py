@@ -2,6 +2,9 @@ from abc import ABC
 
 import torch
 from sentence_transformers import SentenceTransformer
+from torch import Tensor
+from transformers import AutoTokenizer, AutoModel
+
 from llm_interface import LLMInterface
 
 
@@ -55,14 +58,17 @@ class E5MistralSentenceEmbedder(AbstractSentenceEmbedder):
         input_examples = input_examples + self.model.tokenizer.eos_token
         return input_examples
 
-    def forward_passage(self, passage):
-        passage_embeddings = self.model.encode(passage, batch_size=1)
+    def forward_passage(self, passages):
+        passages = passages if isinstance(passages, list) else [passages]
+        passage_embeddings = self.model.encode(passages, batch_size=len(passages), prompt=self.passage_prompt,
+                                               normalize_embeddings=True)
         return passage_embeddings
 
 
-    def forward_query(self, query):
-        query_embeddings = self.model.encode(query, batch_size=1, prompt=self.query_prompt,
-                                        normalize_embeddings=True).tolist()
+    def forward_query(self, queries):
+        queries = queries if isinstance(queries, list) else [queries]
+        query_embeddings = self.model.encode(queries, batch_size=len(queries), prompt=self.query_prompt,
+                                        normalize_embeddings=True)
         return query_embeddings
 
     def dim_size(self):
@@ -109,7 +115,7 @@ class NV_Embed_V2(AbstractSentenceEmbedder):
 
     def forward_passage(self, passage: str | list[str]):
         passages = [passage] if isinstance(passage, str) else passage
-        passages = [item[:10000] for item in passages]
+        passages = [item[:9000] for item in passages]
         passage_embeddings = self.model.encode(self.add_eos(passages),
                                                convert_to_numpy=False,
                                                convert_to_tensor=True,

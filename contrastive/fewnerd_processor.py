@@ -114,7 +114,7 @@ def train_fine_types():
             'astronomything', 'language', 'train', 'scholar', 'bodiesofwater', 'chemicalthing', 'director',
             'showorganization', 'writtenart', 'disaster', 'medical', 'music', 'airplane', 'biologything', 'theater',
             'sportsteam', 'government/governmentagency', 'livingthing', 'artist/author', 'protest', 'god']
-        + test_fine_types()
+        # + test_fine_types()
     )
 
 
@@ -127,15 +127,18 @@ def extract_entities_from_es_response(response):
     return [docu["_source"] for docu in response] if response else []
 
 
-def choose_llm_representation(end, start, input_tokens):
+def choose_llm_representation(end, start, input_tokens, eos=None):
     assert input_tokens in __input_token_factory, f"input_tokens should be one of {list(__input_token_factory.keys())} but got {input_tokens}"
-    return __input_token_factory[input_tokens](end, start)
+    return __input_token_factory[input_tokens](end, start, eos)
 
 
 __input_token_factory = {
-    "diff": lambda end, start: (torch.tensor(end, dtype=torch.double) - torch.tensor(start, dtype=torch.double)).item(),
-    "end": lambda end, start: torch.tensor(end, dtype=torch.double),
-    "start_end_pair": lambda end, start: torch.concat((torch.tensor(end,dtype=torch.double), torch.tensor(start, dtype=torch.double)), dim=-1)
+    "diff": lambda end, start, eos=None: (torch.tensor(end, dtype=torch.double) - torch.tensor(start, dtype=torch.double)),
+    "end": lambda end, start, eos=None: torch.tensor(end, dtype=torch.double),
+    "start_end_pair": lambda end, start,eos=None: torch.concat((torch.tensor(end,dtype=torch.double), torch.tensor(start, dtype=torch.double)), dim=-1),
+    "start_eos_pair": lambda end, start=None, eos=None: torch.concat((torch.tensor(end, dtype=torch.double), torch.tensor(eos, dtype=torch.double)), dim=-1
+        )
+
 }
 
 
@@ -143,10 +146,12 @@ def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_l
     llm_representation = partial(choose_llm_representation, input_tokens=input_tokens)
 
     if not is_fine_tune_llm:
-        end_representation = [item["embedding"][llm_layer]["end"] for item in documents]
-        start_representation = [item["embedding"][llm_layer]["start"] for item in documents]
+        eos_batch = [item["embedding"][llm_layer]["eos"] for item in documents]
+        end_batch = [item["embedding"][llm_layer]["end"] for item in documents]
+        start_batch = [item["embedding"][llm_layer]["start"] for item in documents]
+
         stack = torch.stack(
-            [llm_representation(end, start) for end, start in zip(end_representation, start_representation)]).to(device)
+            [llm_representation(end=end, start=start,eos=eos) for end, start, eos in zip(end_batch, start_batch, eos_batch)]).to(device)
         return stack
 
     else:
@@ -267,6 +272,16 @@ def retrieve_anchors_for_sentence_test():
 def load_entity_name_embeddings(layer_name, entity_name_strategy, index = "fewnerd_entity_name_to_embedding") -> dict[str, torch.Tensor]:
 
     elastic_field = f'embedding.{layer_name}.{entity_name_strategy}'
+    if entity_name_strategy == "end_eos":
+        elastic_field_to_retrieve = [
+            f'embedding.{layer_name}.end',
+            f'embedding.{layer_name}.eos',
+        ]
+    else:
+        elastic_field_to_retrieve = [
+            f'embedding.{layer_name}.{entity_name_strategy}',
+
+        ]
     elastic_query = {
         "query": {
             "match_all": {}
@@ -274,14 +289,20 @@ def load_entity_name_embeddings(layer_name, entity_name_strategy, index = "fewne
         "size": 600,
         "_source": [
             "entity_name",
-            elastic_field,
+            *elastic_field_to_retrieve,
         ]
     }
 
     replies = dataset_provider.search(elastic_query, index=index)
-    layer_to_tensor = {
-        item["_source"]["entity_name"]: torch.Tensor(item["_source"][elastic_field])
-        for item in replies['hits']['hits']
-    }
+    if entity_name_strategy == "end_eos":
+        layer_to_tensor = {
+            item["_source"]["entity_name"]: torch.cat((torch.Tensor(item["_source"][f'embedding.{layer_name}.end']), torch.Tensor(item["_source"][f'embedding.{layer_name}.eos'])))
+            for item in replies['hits']['hits']
+        }
+    else:
+        layer_to_tensor = {
+            item["_source"]["entity_name"]: torch.Tensor(item["_source"][elastic_field])
+            for item in replies['hits']['hits']
+        }
     return layer_to_tensor
 

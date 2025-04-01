@@ -37,12 +37,15 @@ def step_create_embedding(
 
 	output = []
 	elastic_layer_name = fewnerd_dataset.llm_and_layer_to_elastic_name(llm_id=llm_id, layer=layer)
+	eos_token = llm.tokenizer.eos_token
 	for entity_name, entity_desc in tqdm(entities_to_names.items()):
-		tokens = llm.tokenize(entity_desc).to(device)
+		tokens = llm.tokenize(entity_desc + str(eos_token)).to(device)
 		forwarded_tokens = llm.get_llm_at_layer(tokens, layer)[0]
 		forwarded_tokens =  forwarded_tokens[1: , :]
 		avg_tokens = torch.mean(forwarded_tokens, dim=0)
-		last_tokens = forwarded_tokens[-1, :]
+		last_tokens = forwarded_tokens[-2, :]
+		eos_token = forwarded_tokens[-1, :]
+
 
 		entity_hash = str(hashlib.sha1(str.encode(entity_name)).hexdigest())
 		output.append(
@@ -53,6 +56,7 @@ def step_create_embedding(
 					"llm_layer": elastic_layer_name,
 					f"embedding.{elastic_layer_name}.avg": avg_tokens.detach().cpu().tolist(),
 					f"embedding.{elastic_layer_name}.end": last_tokens.detach().cpu().tolist(),
+					f"embedding.{elastic_layer_name}.eos": eos_token.detach().cpu().tolist(),
 				}
 		)
 
@@ -109,6 +113,7 @@ def executing_pipeline(
 	# Use the pipeline argument to start the pipeline and pass it ot the first step
 	print("launch step one")
 	entities_to_names = fewnerd_processor.type_to_name()
+	PipelineDecorator.debug_pipeline()
 
 	embeddings = step_create_embedding(
 		llm_id,

@@ -19,7 +19,7 @@ from sklearn import metrics
 def main():
 	for e in trange(mlp_args.epochs):
 		train(e)
-		# evaluate(e)
+		evaluate(e)
 		upload_models(e)
 
 
@@ -29,20 +29,18 @@ def avg(l):
 
 def tensorify(*document_items):
 	for document_item in document_items:
-		yield fewnerd_processor.pick_llm_output_for_document(
+		result =  fewnerd_processor.pick_llm_output_for_document(
 			device=device,
 			input_tokens=mlp_args.input_tokens,
 			llm_layer=mlp_args.llm_layer,
 			is_fine_tune_llm=mlp_args.fine_tune_llm,
 			documents=document_item if isinstance(document_item, list) else [document_item]
 		)
+		yield result
 
 def upload_models(epoch):
     global max_benchmark, current_benchmark, instances_model, instances_model_clearml
-    # if math.isclose(current_benchmark, max_benchmark):
-    #     print(f"recognized better benchmark value {max_benchmark}. Uploading model")
-    # if epoch == 0:
-	#     update_output_model(model_path=model_path)
+
 
     file_path = f'instances_model.pt'
     torch.save(instances_model.state_dict(), file_path)
@@ -67,16 +65,16 @@ async def iterate_over_train(fine_type, similarity_strategy):
 
 async def one_type_epoch_training(fine_type, epoch):
 	results = defaultdict(list)
-	# async for anchor, good_batch, bad_batch in iterate_over_train(fine_type, similarity_strategy='instance'):
-	# 	instances_optimizer.zero_grad()
-	# 	types_optimizer.zero_grad()
-	# 	similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
-	#
-	# 	for metric, value in similarity(instances_model, anchor=anchor).items():
-	# 		results[f'instances_{metric}'].extend(value)
-	#
-	# 	instances_optimizer.step()
-	# 	types_optimizer.step()
+	async for anchor, good_batch, bad_batch in iterate_over_train(fine_type, similarity_strategy='instance'):
+		instances_optimizer.zero_grad()
+		types_optimizer.zero_grad()
+		similarity = partial(compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch)
+
+		for metric, value in similarity(instances_model, anchor=anchor).items():
+			results[f'instances_{metric}'].extend(value)
+
+		instances_optimizer.step()
+		types_optimizer.step()
 
 	async for anchor, good_batch, bad_batch in iterate_over_train(fine_type, similarity_strategy='type'):
 		instances_optimizer.zero_grad()

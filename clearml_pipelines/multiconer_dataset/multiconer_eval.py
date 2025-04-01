@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 
+import torch
 from clearml import Dataset
 
 import clearml_helper
@@ -143,47 +144,54 @@ class MulticonerEval(RetrievalEval):
 
 		return text_to_labels
 
-	def get_embedding_field_name(self):
-		return 'nvidia/nv-embed-v2@output'
+	# def get_embedding_field_name(self):
+	# 	return 'nvidia/nv-embed-v2@output'
 
 if __name__ == '__main__':
-	clearml_poc.clearml_init(task_name='eval multiconer', queue_name='dsicsgpu')
-
 	layer_obj = {
-		"layer_id": "7b24211634fd454e99d34b65286ab4d7",
+		"layer_id": "9f9a8fc544d7430386e734d66b2c6f4f",
 		"llm_layer": FineTuneLLM.layer,
 		"llm_id": FineTuneLLM.llm_id,
 		"elasticsearch_index": 'multiconer_validation,multiconer_test,multiconer_train',
 	}
+	clearml_poc.clearml_init(task_name='eval multiconer', queue_name='dsicsgpu')
+
+
 	clearml_poc.clearml_connect_hyperparams(name='eval multiconer', hyperparams=layer_obj)
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
 	args = clearml_helper.get_args_by_mlp_id(layer_obj['layer_id'])
-	entity_type_to_embedding = fewnerd_processor.load_entity_name_embeddings(
-		layer_name=fewnerd_dataset.llm_and_layer_to_elastic_name(
-			llm_id=llm_id,
-			layer=llm_layer
-		),
-		index='multiconer_entity_name_to_embedding',
-		entity_name_strategy=args.entity_name_embeddings
-	)
-	# entity_types = dataset_provider.search(query={"query":{"match_all":{}}}, index="multiconer_entity_name_to_embedding", size=100)
-	# entity_type_to_embedding = {
-	# 	item["_source"]["entity_name"].lower(): item["_source"]['nvidia/nv-embed-v2@output']
-	# 	for item in entity_types["hits"]["hits"]
-	# }
 	layer = layer_obj['layer_id']
 	mlp = clearml_helper.get_mlp_by_id(layer)
 	mlp = mlp.double()
 
-	entity_type_to_embedding = {
-		key.lower(): mlp(value).tolist()
-		for key, value in entity_type_to_embedding.items()
-	}
+	if args.input_tokens != "start_eos_pair":
+		entity_type_to_embedding = fewnerd_processor.load_entity_name_embeddings(
+			layer_name=fewnerd_dataset.llm_and_layer_to_elastic_name(
+				llm_id=llm_id,
+				layer=llm_layer
+			),
+			index='multiconer_entity_name_to_embedding',
+			entity_name_strategy=args.entity_name_embeddings
+		)
+	else:
+		entity_types = dataset_provider.search(query={"query":{"match_all":{}}}, index="multiconer_entity_name_to_embedding", size=100)
+		entity_type_to_embedding = {}
+		layer_name = fewnerd_dataset.llm_and_layer_to_elastic_name(
+			llm_id=llm_id,
+			layer=llm_layer
+		)
+		for db_record in entity_types["hits"]["hits"]:
+			end =  torch.tensor(db_record["_source"][f'embedding.{layer_name}.end'])
+			eos =  torch.tensor(db_record["_source"][f'embedding.{layer_name}.eos'])
+			forwarded = mlp(torch.cat((end, eos))).tolist()
+			entity_name = db_record["_source"]["entity_name"].lower()
+			entity_type_to_embedding[entity_name] = forwarded
+
 
 	layer = layer_obj["layer_id"]
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
 	nertrieve = MulticonerEval(layer=layer, entity_to_embedding=entity_type_to_embedding)
 	nertrieve.eval_zero_shot()
-	# nertrieve.eval_one_shot()
+	nertrieve.eval_one_shot()

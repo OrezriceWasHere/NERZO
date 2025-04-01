@@ -5,7 +5,6 @@ import torch
 from tqdm import tqdm
 import json
 import dataset_provider
-from sentence_embedder import SentenceEmbedder
 
 
 
@@ -25,7 +24,7 @@ class EmbedderEnricher:
 			filter_query: str | None = None,
 	):
 		filter_query = filter_query or {"match_all": {}}
-		fields_to_sort = fields_to_sort or [{"text_id":"asc"}, {"doc_id":"asc"}]
+		fields_to_sort = fields_to_sort or [{"text_id":"desc"}, {"doc_id":"desc"}]
 		query = {
 			"query": {
 				"bool": {
@@ -82,5 +81,4 @@ class EmbedderEnricher:
 				del batch
 			except Exception as e:
 				print(json.dumps({"error": str(e)}))
-				print(json.dumps({"bulk": bulk}))
 

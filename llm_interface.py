@@ -119,6 +119,10 @@ class LLMInterface:
             if any([not self.interested_layers, name in self.interested_layers]):
                 module.register_forward_hook(self.hook_fn(name))
 
+    def tokens_count(self, prompt_text):
+        tokens = self.tokenizer(prompt_text, max_length=self.max_tokens_offset)
+        return len(tokens.input_ids)
+
     def tokenize(self, prompt: str | list[str]) -> torch.Tensor:
         return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=self.max_tokens_offset)
 

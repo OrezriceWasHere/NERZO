@@ -39,9 +39,9 @@ async def document_producer(index, queue):
 	await queue.put(None)
 
 
-def calculate_ne_embedding(embedding_end, embedding_start):
+def calculate_ne_embedding(embedding_end, embedding_start,embedding_eos):
 	embedding = fewnerd_processor.choose_llm_representation(
-		embedding_end, embedding_start, input_tokens=args.input_tokens
+		embedding_end, embedding_start, input_tokens=args.input_tokens,eos=embedding_eos
 	)
 	embedding = embedding.to(device)
 	with torch.no_grad():
@@ -60,7 +60,6 @@ async def document_consumer(index, queue):
 
 	for elastic_index in index.split(","):
 		await ensure_existing_index(elastic_index)
-		await dataset_provider.update_refresh_interval(elastic_index, "30s")
 	count_errors = 0
 	while True:
 		records = await queue.get()
@@ -78,7 +77,12 @@ async def document_consumer(index, queue):
 			device=device,
 			dtype=torch.double
 		).clone().detach()
-		ne_embedding = calculate_ne_embedding(embedding_end, embedding_start)
+		embedding_eos = torch.tensor(
+			[item["_source"]["embedding"][args.llm_layer]["eos"] for item in records],
+			device=device,
+			dtype=torch.double
+		).clone().detach()
+		ne_embedding = calculate_ne_embedding(embedding_end, embedding_start,embedding_eos)
 		batch = []
 		for doc_id, embedding, doc_index in zip(ids, ne_embedding, document_index):
 			batch.append({"update": {"_index": doc_index, "_id": doc_id}})
@@ -100,7 +104,7 @@ async def document_consumer(index, queue):
 
 def main():
 	loop = asyncio.get_event_loop()
-	queue = asyncio.Queue(maxsize=100)
+	queue = asyncio.Queue(maxsize=10000)
 	for x in range(3):
 		loop.run_until_complete(asyncio.gather(
 			document_producer(write_index, queue),
@@ -134,12 +138,12 @@ if __name__ == "__main__":
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
-	mlp_layer = {"layer_id": "6b11b974e63543eb942741562046c063",
+	mlp_layer = {"layer_id": "9f9a8fc544d7430386e734d66b2c6f4f",
 	"slow_down_intentionally": False,
-	"elasticsearch_index": "nertrieve_test"}
+	"elasticsearch_index": "multiconer_validation,multiconer_test,multiconer_train"}
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
 	slow_down_intentially = mlp_layer["slow_down_intentionally"]
-	BATCH_SIZE = 2500
+	BATCH_SIZE = 1000
 	mlp_id = mlp_layer["layer_id"]
 	write_index = mlp_layer["elasticsearch_index"]
 

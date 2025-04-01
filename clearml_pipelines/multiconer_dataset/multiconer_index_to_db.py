@@ -206,7 +206,7 @@ def index_to_db(llm_id: str):
 	print("index to db")
 	database_mapping = fewnerd_dataset.elasticsearch_storage_mapping
 	loop = asyncio.get_event_loop()
-	queue = asyncio.Queue()
+	queue = asyncio.Queue(10000)
 
 	loop.run_until_complete(asyncio.gather(
 		document_producer(database_mapping, queue),

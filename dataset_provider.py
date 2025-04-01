@@ -12,12 +12,20 @@ new_index = "no_redundant_object"
 
 
 def search(query=elastic_query, index=both_indices, **kwargs):
-    response = es.search(index=index, body=query, **kwargs)
+    response = es.search(index=index, body=query,allow_partial_search_results=False, **kwargs)
     return response.body
 
 async def search_async(index, query, **kwargs):
-    response = await async_es.search(index=index, body=query, **kwargs)
+    kwargs["request_cache"] = True
+    if "size" in kwargs and "size" in query:
+        query.pop("size")
+    response = await async_es.search(index=index, body=query, allow_partial_search_results=False, **kwargs)
     return response.body
+
+async def multisearch(index, bulk, **kwargs):
+    response = await async_es.msearch(index=index, body=bulk, **kwargs)
+    return response.body
+
 
 def write_to_index(data, index=new_index):
     response = es.index(index=index, body=data, id=data["id"])
@@ -186,23 +194,23 @@ async def count(index_name, query):
     return response["count"]
 
 async def consume_big_aggregation(query, agg_key, index):
-    response = await async_es.search(index=index, body=query, size=0)
+    response = await async_es.search(index=index, body=query, size=0, allow_partial_search_results=False)
 
     while "after_key" in response["aggregations"][agg_key]:
         after_key = response["aggregations"][agg_key]["after_key"]
         for bucket in response["aggregations"][agg_key]["buckets"]:
             yield bucket
         query["aggs"][agg_key]["composite"]["after"] = after_key
-        response = await async_es.search(index=index, body=query)
+        response = await async_es.search(index=index, body=query, allow_partial_search_results=False)
 
 async def consume_big_query(query, index):
-    response = await async_es.search(index=index, body=query)
+    response = await async_es.search(index=index, body=query, allow_partial_search_results=False)
     hits = response.get("hits", {}).get("hits", [])
     search_after = hits[-1]["sort"] if hits else None
 
     while search_after:
         yield hits
         query["search_after"] = search_after
-        response = await async_es.search(index=index, body=query)
+        response = await async_es.search(index=index, body=query, allow_partial_search_results=False)
         hits = response.get("hits", {}).get("hits", [])
         search_after = hits[-1]["sort"] if hits else None

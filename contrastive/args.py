@@ -13,7 +13,6 @@ class Arguments:
     is_hidden_layer: bool = True
     batch_size: int = 50
     instances_per_type: int = 50
-    semaphore_size:int = 50
 
     llm_layer: str = "llama_3_17_v_proj"
 

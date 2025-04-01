@@ -1,3 +1,4 @@
+import asyncio
 import json
 import math
 from typing import AsyncIterator, Tuple, List, Any, Dict
@@ -161,82 +162,7 @@ def extract_elastic_block(elastic_block):
 	return results
 
 
-async def yield_dataset(
-		anchor_type, dataset_types, batch_size=50,
-		instances_per_type=100,
-		hard_negative_ratio=0,
-		similarity_strategy='instance',
-		llm_layer=None
-):
-	assert similarity_strategy in ('instance', 'type')
 
-	extract = fewnerd_processor.extract_entities_from_es_response
-
-	batches = [
-		(start_index, min(start_index + batch_size, instances_per_type))
-		for start_index in range(0, instances_per_type, batch_size)
-	]
-	batch_sizes = [end - start for start, end in batches]
-
-	for batch_size in batch_sizes:
-		random_query = queries.query_get_by_fine_grained_fewnerd_v3_randomized(
-			fine_grained_type=[anchor_type],
-			batch_size=batch_size,
-			llm_layer=llm_layer,
-			entity_type_key="entity_type"
-		)
-		if similarity_strategy == 'instance':
-			anchor = await dataset_provider.search_async(index=ELASTIC_INDEX, query=random_query, size=1)
-			anchor = extract(anchor["hits"]["hits"])
-			assert len(anchor) == 1
-			anchor = anchor[0]
-			text = anchor["all_text"]
-			result_type = anchor["entity_type"]
-
-		else:
-			text = anchor_type
-			anchor = anchor_type
-			result_type = anchor_type
-
-		random_query["size"] = batch_size
-		other_types = list(set(dataset_types) - {result_type})
-		size_hard_negative = math.ceil(batch_size * hard_negative_ratio)
-		query_hard_negative = queries.query_hard_negative(
-			fine_grained_type=other_types,
-			coarse_grained_type=None,
-			anchor_text=text,
-			size=size_hard_negative,
-			entity_type_key="entity_type",
-			llm_layer=llm_layer
-		)
-		size_easy_negative = batch_size - size_hard_negative
-		query_easy_negative = queries.query_get_by_fine_grained_fewnerd_v3_randomized(
-			fine_grained_type=other_types,
-			batch_size=size_easy_negative,
-			llm_layer=llm_layer,
-			entity_type_key="entity_type"
-		)
-		bulk = [
-			{},
-			random_query,
-			{},
-			query_easy_negative,
-			{},
-			query_hard_negative,
-		]
-		response = await dataset_provider.multisearch(index=ELASTIC_INDEX, bulk=bulk)
-		good_batch, easy_neagtive, hard_negative = response["responses"]
-		# good_batch = await dataset_provider.search_async(index=ELASTIC_INDEX, query=random_query)
-		# easy_neagtive = await dataset_provider.search_async(index=ELASTIC_INDEX, query=query_easy_negative)
-		# hard_negative = await dataset_provider.search_async(index=ELASTIC_INDEX, query=query_hard_negative)
-		chunked_bad_batch = extract(hard_negative["hits"]["hits"]) + extract(easy_neagtive["hits"]["hits"])
-		random.shuffle(chunked_bad_batch)
-		chunked_good_batch = extract(good_batch["hits"]["hits"])
-		assert len(chunked_good_batch) > 0
-		assert len(chunked_bad_batch)  == len(chunked_good_batch), (f"for type {anchor_type} and similaity {similarity_strategy} failed. "
-		                                                            f"good batch: {len(chunked_good_batch)} "
-		                                                            f"bad batch: {len(chunked_bad_batch)}")
-		yield anchor, chunked_good_batch, chunked_bad_batch
 
 
 class NERtrieveDataProvider(AbstractDataProvider):
@@ -244,6 +170,91 @@ class NERtrieveDataProvider(AbstractDataProvider):
 
 	def __init__(self):
 		self.entity_name_embeddings = None
+		self.semaphore = asyncio.Semaphore(20)
+
+	async def yield_dataset(self,
+			anchor_type, dataset_types, batch_size=50,
+			instances_per_type=100,
+			hard_negative_ratio=0,
+			similarity_strategy='instance',
+			llm_layer=None
+	):
+		async with self.semaphore:
+			assert similarity_strategy in ('instance', 'type')
+
+			extract = fewnerd_processor.extract_entities_from_es_response
+
+			batches = [
+				(start_index, min(start_index + batch_size, instances_per_type))
+				for start_index in range(0, instances_per_type, batch_size)
+			]
+			batch_sizes = [end - start for start, end in batches]
+
+			for batch_size in batch_sizes:
+				random_query = queries.query_get_by_fine_grained_fewnerd_v3_randomized(
+					fine_grained_type=[anchor_type],
+					batch_size=batch_size,
+					llm_layer=llm_layer,
+					entity_type_key="entity_type"
+				)
+				if similarity_strategy == 'instance':
+					anchor = await dataset_provider.search_async(index=ELASTIC_INDEX, query=random_query, size=1)
+					anchor = extract(anchor["hits"]["hits"])
+					assert len(anchor) == 1
+					anchor = anchor[0]
+					text = anchor["all_text"]
+					result_type = anchor["entity_type"]
+
+				else:
+					text = anchor_type
+					anchor = anchor_type
+					result_type = anchor_type
+
+				random_query["size"] = batch_size
+				other_types = list(set(dataset_types) - {result_type})
+				size_hard_negative = math.ceil(batch_size * hard_negative_ratio)
+				query_hard_negative = queries.query_hard_negative(
+					fine_grained_type=other_types,
+					coarse_grained_type=None,
+					anchor_text=text,
+					size=size_hard_negative,
+					entity_type_key="entity_type",
+					llm_layer=llm_layer
+				)
+				size_easy_negative = batch_size - size_hard_negative
+				query_easy_negative = queries.query_get_by_fine_grained_fewnerd_v3_randomized(
+					fine_grained_type=other_types,
+					batch_size=size_easy_negative,
+					llm_layer=llm_layer,
+					entity_type_key="entity_type"
+				)
+				bulk = [
+					{},
+					random_query,
+					{},
+					query_easy_negative,
+					{},
+					query_hard_negative,
+				]
+				for query in bulk:
+					if query:
+						query["_source"] = ["all_text", "index_start", "index_end"]
+				response = await dataset_provider.multisearch(index=ELASTIC_INDEX, bulk=bulk)
+				assert any(reply["_shards"]["failed"] != 0 for reply in response["responses"])
+				good_batch, easy_negative, hard_negative = response["responses"]
+				# good_batch = await dataset_provider.search_async(index=ELASTIC_INDEX, query=random_query)
+				# easy_negative = await dataset_provider.search_async(index=ELASTIC_INDEX, query=query_easy_negative)
+				# hard_negative = await dataset_provider.search_async(index=ELASTIC_INDEX, query=query_hard_negative)
+				chunked_bad_batch = extract(hard_negative["hits"]["hits"]) + extract(easy_negative["hits"]["hits"])
+				random.shuffle(chunked_bad_batch)
+				chunked_good_batch = extract(good_batch["hits"]["hits"])
+				assert len(chunked_good_batch) > 0
+				assert len(chunked_bad_batch) == len(chunked_good_batch), (
+					f"for type {anchor_type} and similaity {similarity_strategy} failed. "
+					f"good batch: {len(chunked_good_batch)} "
+					f"bad batch: {len(chunked_bad_batch)}")
+
+				yield anchor, chunked_good_batch, chunked_bad_batch
 
 	async def yield_train_dataset(
 			self, anchor_type: str, batch_size: int, instances_per_type: int,
@@ -251,7 +262,7 @@ class NERtrieveDataProvider(AbstractDataProvider):
 			similarity_strategy: str
 	) -> AsyncIterator[Tuple[Any, Any, Any]]:
 		all_types = train_types()
-		iterator = yield_dataset(
+		iterator = self.yield_dataset(
 			anchor_type=anchor_type,
 			dataset_types=all_types,
 			batch_size=batch_size,
@@ -268,7 +279,7 @@ class NERtrieveDataProvider(AbstractDataProvider):
 			llm_layer: int, similarity_strategy: str
 	) -> AsyncIterator[Tuple[Any, Any, Any]]:
 		all_types = test_types()
-		iterator = yield_dataset(
+		iterator = self.yield_dataset(
 			anchor_type=anchor_type,
 			dataset_types=all_types,
 			batch_size=batch_size,
@@ -300,6 +311,7 @@ class NERtrieveDataProvider(AbstractDataProvider):
 
 	def train_fine_types(self) -> List[str]:
 		"""Returns a list of fine-grained entity types for training."""
+		# return ["Disease or disorder"]
 		return train_types()
 
 	def test_fine_types(self) -> List[str]:
@@ -321,7 +333,7 @@ class NERtrieveDataProvider(AbstractDataProvider):
 			}
 		else:
 			layer_to_tensor = {
-				text: torch.cat((llm_output["end"], llm_output[entity_name_strategy]))
+				text: llm_output[entity_name_strategy]
 				for text, llm_output in zip(all_types, forward_in_llm)
 			}
 		del forward_in_llm

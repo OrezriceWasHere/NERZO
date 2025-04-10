@@ -1,12 +1,15 @@
+import torch
+from datasets import tqdm
+
 import clearml_helper
 import clearml_poc
 import dataset_provider
-import queries
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
 from clearml_pipelines.nertreieve_dataset import nertrieve_processor
-from contrastive import fewnerd_processor
 from contrastive.args import FineTuneLLM
 from contrastive.retrieval_eval import RetrievalEval
+from llm_interface import LLMInterface
+from sentence_embedder import SentenceEmbedder
 
 
 class NERtrieveEvalZeroShot(RetrievalEval):
@@ -22,7 +25,7 @@ class NERtrieveEvalZeroShot(RetrievalEval):
 		return 'entity_type'
 
 	def get_embedding_field_name(self):
-		return 'nvidia/nv-embed-v2@output'
+		return 'embedding.llama_3_17_v_proj.eos'
 
 	def anchors(self):
 		return {
@@ -318,7 +321,7 @@ if __name__ == '__main__':
 	clearml_poc.clearml_init(task_name='eval nertrieve', queue_name='dsicsgpu')
 
 	layer_obj = {
-		"layer_id": "7b24211634fd454e99d34b65286ab4d7",
+		"layer_id": "137515e67cb14851b85d55846e630337",
 		"llm_layer": FineTuneLLM.layer,
 		"llm_id": FineTuneLLM.llm_id,
 		"elasticsearch_index": 'nertrieve_test',
@@ -327,41 +330,34 @@ if __name__ == '__main__':
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
 	args = clearml_helper.get_args_by_mlp_id(layer_obj['layer_id'])
-	# entity_type_to_embedding = fewnerd_processor.load_entity_name_embeddings(
-	# 	layer_name=fewnerd_dataset.llm_and_layer_to_elastic_name(
-	# 		llm_id=llm_id,
-	# 		layer=llm_layer
-	# 	),
-	# 	index='nertrieve_entity_name_to_embedding',
-	# 	entity_name_strategy=args.entity_name_embeddings
-	# )
-	# entity_type_to_embedding = {
-	#     type_to_name[key]:value.tolist()
-	#
-	# 	for key, value in entity_type_to_embedding.items()
-	# }
+
 	type_to_name = nertrieve_processor.type_to_name()
-	entity_type_to_embedding = dataset_provider.search(query={"query":{"match_all": {}}}, index="nertrieve_entity_name_to_embedding",size=200)
-	# entity_name_to_embedding = {
-	# 	item["_source"]["entity_description"]: item["_source"]["nvidia/nv-embed-v2@output"]
-	# 	for item in entity_type_to_embedding["hits"]["hits"]
-	# }
 	layer = layer_obj['layer_id']
 	mlp = clearml_helper.get_mlp_by_id(layer)
 	mlp = mlp.double()
+	layer_name = "llama_3_17_v_proj"
 
-	# query = queries.query_search_by_similarity(
-	# 	embedding=entity_name_to_embedding["Bird"],
-	# 	layer='nvidia/nv-embed-v2@output'
-	# )
-	# query = {"query": query}
-	# results = dataset_provider.search(query=query, index="nertrieve_test", size=200)
+	entity_types = dataset_provider.search(query={"query":{"match_all": {}}}, index="nertrieve_entity_name_to_embedding",size=200)
+	entity_type_to_embedding = {}
+	for db_record in tqdm(entity_types["hits"]["hits"]):
+		entity_name = db_record["_source"]["entity_description"]
+		entity_embedding = db_record["_source"]["embedding.llama_3_17_v_proj.eos"]
+		entity_type_to_embedding[entity_name] = entity_embedding
+
+		# update the docuemnt with the embedding field
+
+
+		# end = torch.tensor(db_record["_source"]["embedding.llama_3_17_v_proj.end"])
+		# eos = torch.tensor(db_record["_source"]["embedding.llama_3_17_v_proj.eos"])
+		# ne_embedding = mlp(torch.cat((end, eos))).tolist()
+		# entity_type_to_embedding[db_record["_source"]["entity_description"]] = ne_embedding
+
 
 
 	layer = layer_obj["layer_id"]
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
-	nertrieve = NERtrieveEvalZeroShot(layer=layer, entity_to_embedding=entity_name_to_embedding)
+	nertrieve = NERtrieveEvalZeroShot(layer=layer, entity_to_embedding=entity_type_to_embedding)
 	nertrieve.eval_zero_shot()
 	nertrieve.eval_one_shot()
 

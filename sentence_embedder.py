@@ -53,6 +53,8 @@ class E5MistralSentenceEmbedder(AbstractSentenceEmbedder):
     def __init__(self, llm_id, passage_prompt="", query_prompt="", **kwargs):
         super().__init__(llm_id, passage_prompt, query_prompt)
         self.model = SentenceTransformer(llm_id)
+        self.model.half()
+        self.model.max_seq_length = 65356 // 2
 
     def add_eos(self, input_examples):
         input_examples = input_examples + self.model.tokenizer.eos_token
@@ -60,15 +62,24 @@ class E5MistralSentenceEmbedder(AbstractSentenceEmbedder):
 
     def forward_passage(self, passages):
         passages = passages if isinstance(passages, list) else [passages]
-        passage_embeddings = self.model.encode(passages, batch_size=len(passages), prompt=self.passage_prompt,
+        passage_embeddings = self.model.encode(passages,
+                                               batch_size=len(passages),
+                                               prompt=self.passage_prompt,
+                                               convert_to_numpy=False,
+                                               convert_to_tensor=True,
                                                normalize_embeddings=True)
         return passage_embeddings
 
 
     def forward_query(self, queries):
         queries = queries if isinstance(queries, list) else [queries]
-        query_embeddings = self.model.encode(queries, batch_size=len(queries), prompt=self.query_prompt,
-                                        normalize_embeddings=True)
+        query_embeddings = self.model.encode(queries,
+                                             batch_size=len(queries),
+                                             prompt=self.query_prompt,
+                                             convert_to_numpy=False,
+                                             convert_to_tensor=True,
+
+                                             normalize_embeddings=True)
         return query_embeddings
 
     def dim_size(self):
@@ -102,7 +113,7 @@ class NV_Embed_V2(AbstractSentenceEmbedder):
 
     def __init__(self, llm_id, passage_prompt="", query_prompt="", **kwargs):
         self.model = SentenceTransformer(llm_id, trust_remote_code=True)
-        self.model.max_seq_length = 65356
+        self.model.max_seq_length = 65356 // 2
         self.model.tokenizer.padding_side = "right"
         self.query_prefix = query_prompt
         self.model.half()

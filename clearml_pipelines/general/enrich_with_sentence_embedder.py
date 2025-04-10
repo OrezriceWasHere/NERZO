@@ -1,11 +1,9 @@
 import asyncio
 
 import torch
-from clearml.automation.controller import PipelineDecorator
 import clearml_poc
 import dataset_provider
 from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
-from clearml_pipelines.general import elastic_async_helpers
 from clearml_pipelines.general.elastic_async_helpers import EmbedderEnricher
 from sentence_embedder import SentenceEmbedder
 
@@ -48,7 +46,7 @@ def forward_sentence_embedder_in_index(
 	                                                           layer_name=output_field_name)
 	loop.run_until_complete(dataset_provider.ensure_field(elastic_index, embedding_field_mapping))
 	queue = asyncio.Queue(maxsize=10000)
-	BATCH_SIZE = 500
+	BATCH_SIZE = 100
 
 	for _ in range(5):
 
@@ -99,8 +97,8 @@ if __name__ == "__main__":
 	)
 
 	conf = {
-		"dataset_index": "netrieve_train",
-		"naming_index": "nertrieve_entity_name_to_embedding",
+		"dataset_index": "nertrieve_test",
+		"naming_index": "fewnerd_entity_name_to_embedding",
 		"sentence_embedder_id": "intfloat/e5-mistral-7b-instruct"
 	}
 

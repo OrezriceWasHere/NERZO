@@ -1,4 +1,6 @@
 import asyncio
+import time
+
 import torch
 import tqdm
 import urllib3
@@ -18,11 +20,14 @@ def not_processed_documents_query():
 			"bool": {
 				"must_not": [
 					{"exists": {"field": f"embedding.{mlp_id}"}},
+				],
+				"must": [
+					{"exists": {"field": f"embedding.{args.llm_layer}.eos"}},
 				]
 			}
 		},
 		"sort": [
-			{"text_id":"asc"},
+			{"text_id":{"order":"desc"}},
 			"index_start"
 		],
 		"_source": [f"embedding.{args.llm_layer}.*", "entity_type"]
@@ -138,14 +143,15 @@ if __name__ == "__main__":
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
-	mlp_layer = {"layer_id": "9f9a8fc544d7430386e734d66b2c6f4f",
+	mlp_layer = {"layer_id": "f77030ed719f43d0bb7b71314fa46257",
 	"slow_down_intentionally": False,
-	"elasticsearch_index": "multiconer_validation,multiconer_test,multiconer_train"}
+	"elasticsearch_index": "multiconer_test,multiconer_train,multiconer_validation",}
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
 	slow_down_intentially = mlp_layer["slow_down_intentionally"]
 	BATCH_SIZE = 1000
 	mlp_id = mlp_layer["layer_id"]
 	write_index = mlp_layer["elasticsearch_index"]
+
 
 	similarity_model = clearml_helper.get_mlp_by_id(mlp_id, device=device)
 	similarity_model = similarity_model.double()

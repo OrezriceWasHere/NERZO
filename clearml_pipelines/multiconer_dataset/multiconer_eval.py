@@ -4,6 +4,7 @@ import os
 
 import torch
 from clearml import Dataset
+from tqdm import tqdm
 
 import clearml_helper
 import clearml_poc
@@ -13,6 +14,8 @@ from clearml_pipelines.nertreieve_dataset import nertrieve_processor
 from contrastive import fewnerd_processor
 from contrastive.args import FineTuneLLM
 from contrastive.retrieval_eval import RetrievalEval
+from llm_interface import LLMInterface
+from sentence_embedder import SentenceEmbedder
 
 
 class MulticonerEval(RetrievalEval):
@@ -143,13 +146,13 @@ class MulticonerEval(RetrievalEval):
 			text_to_labels = json.load(f)
 
 		return text_to_labels
-
+	#
 	# def get_embedding_field_name(self):
-	# 	return 'nvidia/nv-embed-v2@output'
+	# 	return 'embedding.llama_3_17_v_proj.end'
 
 if __name__ == '__main__':
 	layer_obj = {
-		"layer_id": "9f9a8fc544d7430386e734d66b2c6f4f",
+		"layer_id": "f77030ed719f43d0bb7b71314fa46257",
 		"llm_layer": FineTuneLLM.layer,
 		"llm_id": FineTuneLLM.llm_id,
 		"elasticsearch_index": 'multiconer_validation,multiconer_test,multiconer_train',
@@ -164,34 +167,46 @@ if __name__ == '__main__':
 	layer = layer_obj['layer_id']
 	mlp = clearml_helper.get_mlp_by_id(layer)
 	mlp = mlp.double()
+	#
+	# if args.input_tokens != "start_eos_pair":
+	# 	entity_type_to_embedding = fewnerd_processor.load_entity_name_embeddings(
+	# 		layer_name=fewnerd_dataset.llm_and_layer_to_elastic_name(
+	# 			llm_id=llm_id,
+	# 			layer=llm_layer
+	# 		),
+	# 		index='multiconer_entity_name_to_embedding',
+	# 		entity_name_strategy=args.entity_name_embeddings
+	# 	)
+	# else:
+	# 	entity_types = dataset_provider.search(query={"query":{"match_all":{}}}, index="multiconer_entity_name_to_embedding", size=100)
+	# 	entity_type_to_embedding = {}
+	# 	layer_name = fewnerd_dataset.llm_and_layer_to_elastic_name(
+	# 		llm_id=llm_id,
+	# 		layer=llm_layer
+	# 	)
+	# 	embedding_per_fine_type = {}
+	# 	for db_record in tqdm(entity_types["hits"]["hits"]):
+	# 		entity_name = db_record["_source"]["entity_name"].lower()
+	# 		embedding_per_fine_type[entity_name] = db_record["_source"]["intfloat/e5-mistral-7b-instruct@output@output"]
+	llm_args = FineTuneLLM()
+	entity_types = dataset_provider.search(
+			query={"query": {"match_all": {}}}, index="multiconer_entity_name_to_embedding", size=100
+			)
+	entity_type_to_embedding = {}
+	for db_record in entity_types["hits"]["hits"]:
+			name = db_record["_source"]["entity_name"].lower()
+			llama_embedding = db_record["_source"]["embedding.meta-llama/meta-llama-3-1-8b@model-layers-17-self_attn-v_proj.end"]
+			embedding = mlp(torch.tensor(llama_embedding)).tolist()
+			entity_type_to_embedding[name] = embedding
+		# end =  torch.tensor(db_record["_source"][f'embedding.{layer}.end'])
+		# eos =  torch.tensor(db_record["_source"][f'embedding.{layer_name}.eos'])
+		#
 
-	if args.input_tokens != "start_eos_pair":
-		entity_type_to_embedding = fewnerd_processor.load_entity_name_embeddings(
-			layer_name=fewnerd_dataset.llm_and_layer_to_elastic_name(
-				llm_id=llm_id,
-				layer=llm_layer
-			),
-			index='multiconer_entity_name_to_embedding',
-			entity_name_strategy=args.entity_name_embeddings
-		)
-	else:
-		entity_types = dataset_provider.search(query={"query":{"match_all":{}}}, index="multiconer_entity_name_to_embedding", size=100)
-		entity_type_to_embedding = {}
-		layer_name = fewnerd_dataset.llm_and_layer_to_elastic_name(
-			llm_id=llm_id,
-			layer=llm_layer
-		)
-		for db_record in entity_types["hits"]["hits"]:
-			end =  torch.tensor(db_record["_source"][f'embedding.{layer_name}.end'])
-			eos =  torch.tensor(db_record["_source"][f'embedding.{layer_name}.eos'])
-			forwarded = mlp(torch.cat((end, eos))).tolist()
-			entity_name = db_record["_source"]["entity_name"].lower()
-			entity_type_to_embedding[entity_name] = forwarded
 
 
 	layer = layer_obj["layer_id"]
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
-	nertrieve = MulticonerEval(layer=layer, entity_to_embedding=entity_type_to_embedding)
-	nertrieve.eval_zero_shot()
-	nertrieve.eval_one_shot()
+	multiconer = MulticonerEval(layer=layer, entity_to_embedding=entity_type_to_embedding)
+	multiconer.eval_zero_shot()
+	multiconer.eval_one_shot()

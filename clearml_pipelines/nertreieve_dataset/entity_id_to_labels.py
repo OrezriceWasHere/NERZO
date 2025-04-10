@@ -30,6 +30,7 @@ async def mapping_entity_id_to_all_possible_labels(queue):
 		entity_id_to_labels[record['text_id']].append(record[entity_type_key])
 		pbar.update(1)
 	file_name = 'text_id_to_labels.json'
+	entity_id_to_labels = {key: list(set(items)) for key, items in entity_id_to_labels.items()}
 	async with aiofiles.open(file_name, "w") as f:
 		await f.write(json.dumps(entity_id_to_labels))
 	task_project = clearml_poc.get_project_name()
@@ -60,7 +61,7 @@ async def load_json_task(queue):
 
 async def main():
 	# Create multiple worker queues and tasks
-	queue = asyncio.Queue(maxsize=10000)
+	queue = asyncio.Queue(maxsize=100)
 
 	# Gather all tasks
 	await asyncio.gather(
@@ -72,15 +73,15 @@ async def main():
 if __name__ == "__main__":
 
 	clearml_poc.clearml_init(
-		project_name="neretrieve_pipeline",
+		project_name="fewnerd_pipeline",
 		task_name="text id to all labels",
 		requirements=["aiohttp", "aiofiles"],
 		queue_name='dsicsgpu'
 	)
 	args = Arguments()
 	task_params = {
-		"index":"nertrieve_test",
-		"entity_type_key": "entity_type"
+		"index":"fewnerd_v4_train,fewnerd_v4_test,fewnerd_v4_dev",
+		"entity_type_key": "fine_type"
 	}
 	clearml_poc.clearml_connect_hyperparams(task_params, "conf")
 	index = task_params["index"]

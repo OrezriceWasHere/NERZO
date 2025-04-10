@@ -1,6 +1,8 @@
 import abc
 import asyncio
 import random
+from abc import abstractclassmethod
+
 from sklearn.metrics import ndcg_score
 from collections import defaultdict
 import pandas as pd
@@ -35,7 +37,7 @@ class RetrievalEval(abc.ABC):
 		self.embedding_per_type = entity_to_embedding
 		self.all_test_types = list(entity_to_embedding.keys())
 		self.entity_field = self.entity_type_field_name()
-		self.semaphore = asyncio.Semaphore(100)
+		self.semaphore = asyncio.Semaphore(20)
 		self.text_id_to_labels = self.calc_text_id_to_labels()
 		self.is_bm25 = is_bm25
 
@@ -100,7 +102,7 @@ class RetrievalEval(abc.ABC):
 			phrase = document["phrase"]
 			async with self.semaphore:
 				similar_doc = await self.search_similar_items(embedding, count_type + 1, entity_type, phrase)
-
+			similar_doc = sorted(similar_doc.items(), key=lambda x: x[1]["score"], reverse=True)
 			for size, size_desc in zip(sizes, descriptions):
 				k = min(size, count_type)
 				size_eval = self.evaluate(
@@ -114,7 +116,8 @@ class RetrievalEval(abc.ABC):
 				for key, metric in size_eval.items():
 					result[key].append(metric)
 
-			result["size"] = count_type
+		result["size"] = count_type
+		self.pbar.update(1)
 		avg_result = {
 			key: (sum(values) / len(values) ) if isinstance(values, list) else values
 			for key, values in result.items()
@@ -278,51 +281,15 @@ class RetrievalEval(abc.ABC):
 		x =  await dataset_provider.search_async(index=self.index, query=query)
 		return x["aggregations"]["unique_text_ids"]["value"]
 
+	@abc.abstractmethod
 	def anchors(self):
 		raise NotImplementedError()
 
+	@abc.abstractmethod
 	def entity_type_field_name(self):
 		raise NotImplementedError()
 
+	@abc.abstractmethod
 	def calc_text_id_to_labels(self):
 		raise NotImplementedError()
 
-
-if __name__ == "__main__":
-	clearml_poc.clearml_init(task_name="calculate recall")
-
-	layer_obj = {
-		"layer_id": "de8cbfe796714725930af567f488230f",
-		"llm_layer": FineTuneLLM.layer,
-		"llm_id": FineTuneLLM.llm_id
-	}
-	clearml_poc.clearml_connect_hyperparams(layer_obj, name="layer")
-	layer = layer_obj["layer_id"]
-	llm_layer = layer_obj["llm_layer"]
-	llm_id = layer_obj["llm_id"]
-	index = "fewnerd_tests"
-
-	all_test_types = anchors()
-
-	embedding_per_type = type_to_tensor = fewnerd_processor.load_entity_name_embeddings(
-		layer_name=fewnerd_dataset.llm_and_layer_to_elastic_name(
-			llm_id=llm_id,
-			layer=llm_layer
-		),
-		entity_name_strategy=Arguments.entity_name_embeddings
-	)
-	print('passing test in mlp')
-	similarity_mlp = clearml_helper.get_mlp_by_id(layer)
-	embedding_per_type = {key: similarity_mlp(value).detach().tolist()
-	                      for key, value in embedding_per_type.items()
-	                      if key in fewnerd_processor.test_fine_types()
-	                      }
-
-	one_shot_tasks = [handle_type_one_shot(type, ids) for type, ids in all_test_types.items()]
-
-	llm_args = ()
-
-	main(one_shot_tasks, series="one shot")
-
-	zero_shot_tasks = [zero_shot_task(type) for type in all_test_types.keys()]
-	main(zero_shot_tasks, series="zero shot")

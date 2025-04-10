@@ -48,8 +48,8 @@ async def write_batch(bulk, id_generator=generate_id):
 	batch = []
 	for record, index in bulk:
 		doc_id = id_generator(record)
-		batch.append({"update": {"_index": index, "_id": doc_id}})
-		batch.append({"doc": {**record, "doc_id": doc_id}, "doc_as_upsert": True})
+		batch.append({"create": {"_index": index, "_id": doc_id}})
+		batch.append({**record, "doc_id": doc_id})
 	x = await dataset_provider.bulk(batch)
 	return x
 
@@ -85,10 +85,10 @@ async def main():
 	worker_task = write_to_elastic_worker(queue)
 
 	dataset = {
-		"url": "https://storage.googleapis.com/neretrieve_dataset/IR/NERetrive_IR_train.jsonl.bz2",
-		"name": "retrieval-train-supervised.txt",
-		"json": "retrieval-train-supervised.json",
-		"env": "train"
+		"url": "https://storage.googleapis.com/neretrieve_dataset/IR/NERetrive_IR_test.jsonl.bz2",
+		"name": "retrieval-test-supervised.txt",
+		"json": "retrieval-test-supervised.json",
+		"env": "test"
 	}
 
 	# Gather all tasks

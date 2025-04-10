@@ -93,8 +93,8 @@ def forward_sentence_embedder_in_index(
 
 	}
 	loop.run_until_complete(dataset_provider.ensure_field(index_name=elastic_index, field_mapping=embedding_field))
-	queue = asyncio.Queue(maxsize=10000)
-	BATCH_SIZE = 200
+	queue = asyncio.Queue(maxsize=100)
+	BATCH_SIZE = 100
 
 	for _ in range(5):
 		loop.run_until_complete(
@@ -142,7 +142,7 @@ if __name__ == "__main__":
 	)
 
 	conf = {
-		# "dataset_index": "nertrieve_train",
+		"dataset_index": "nertrieve_test",
 		"naming_index": "nertrieve_entity_name_to_embedding",
 		"db_name": "embedding.llama_3_17_v_proj"
 	}

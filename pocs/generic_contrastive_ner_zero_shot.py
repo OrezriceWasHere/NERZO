@@ -154,7 +154,6 @@ class AbstractMLPTrainer:
 		self.types_optimizer = torch.optim.Adam(self.types_model.parameters(), lr=mlp_args.lr)
 		self.max_benchmark = 0
 		self.current_benchmark = 0
-		self.semaphore = asyncio.Semaphore(mlp_args.semaphore_size)
 		self.pbar = None
 		self.instances_model_clearml = clearml_poc.generate_tracked_model(
 			name="instances_model",

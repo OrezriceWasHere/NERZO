@@ -125,32 +125,32 @@ def test_types():
 		"Band",
 		"Women computer scientist"
 	]
-
-
-def generate_embedding_batch(batch):
-	eos_token = llm.tokenizer.eos_token
-	texts = list(set(text + eos_token for text, indices in batch))
-	tokens = llm.tokenize(texts).to('cuda')
-	embeddings = llm.get_llm_at_layer(tokens, layer=layer)
-	text_to_embedding = {text: encoding for text, encoding in zip(texts, embeddings)}
-	bulk = []
-	for text, indices in batch:
-		text_in_llm = text + eos_token
-		h = text_to_embedding[text_in_llm]
-		llm_indices = llm.token_indices_given_text_indices(text_in_llm, indices)
-		index_of_eos = llm.tokens_count(text_in_llm) - 1
-		start = h[llm_indices[0] - 1]
-		end = h[llm_indices[1]]
-		eos = h[index_of_eos]
-		bulk.append(
-			{
-				"start": start,
-				"end": end,
-				"eos": eos,
-			}
-		)
-	del embeddings
-	return bulk
+#
+#
+# def generate_embedding_batch(batch):
+# 	eos_token = llm.tokenizer.eos_token
+# 	texts = list(set(text + eos_token for text, indices in batch))
+# 	tokens = llm.tokenize(texts).to('cuda')
+# 	embeddings = llm.get_llm_at_layer(tokens, layer=layer)
+# 	text_to_embedding = {text: encoding for text, encoding in zip(texts, embeddings)}
+# 	bulk = []
+# 	for text, indices in batch:
+# 		text_in_llm = text + eos_token
+# 		h = text_to_embedding[text_in_llm]
+# 		llm_indices = llm.token_indices_given_text_indices(text_in_llm, indices)
+# 		index_of_eos = llm.tokens_count(text_in_llm) - 1
+# 		start = h[llm_indices[0] - 1]
+# 		end = h[llm_indices[1]]
+# 		eos = h[index_of_eos]
+# 		bulk.append(
+# 			{
+# 				"start": start,
+# 				"end": end,
+# 				"eos": eos,
+# 			}
+# 		)
+# 	del embeddings
+# 	return bulk
 
 
 def extract_elastic_block(elastic_block):
@@ -162,23 +162,21 @@ def extract_elastic_block(elastic_block):
 	return results
 
 
-
-
-
 class NERtrieveDataProvider(AbstractDataProvider):
 
 
 	def __init__(self):
 		self.entity_name_embeddings = None
-		self.semaphore = asyncio.Semaphore(20)
+		self.semaphore = asyncio.Semaphore(50)
 
-	async def yield_dataset(self,
+	async def yield_dataset(
+			self,
 			anchor_type, dataset_types, batch_size=50,
 			instances_per_type=100,
 			hard_negative_ratio=0,
 			similarity_strategy='instance',
 			llm_layer=None
-	):
+			):
 		async with self.semaphore:
 			assert similarity_strategy in ('instance', 'type')
 
@@ -197,6 +195,11 @@ class NERtrieveDataProvider(AbstractDataProvider):
 					llm_layer=llm_layer,
 					entity_type_key="entity_type"
 				)
+				random_query["query"] = {
+					"bool": {"must": [random_query["query"], {"exists": {"field": "embedding.llama_3_17_v_proj.eos"}}]}
+				}
+				random_query["_source"] = ["embedding.llama_3_17_v_proj.*", "entity_type", "phrase", "all_text"]
+
 				if similarity_strategy == 'instance':
 					anchor = await dataset_provider.search_async(index=ELASTIC_INDEX, query=random_query, size=1)
 					anchor = extract(anchor["hits"]["hits"])
@@ -229,22 +232,19 @@ class NERtrieveDataProvider(AbstractDataProvider):
 					entity_type_key="entity_type"
 				)
 				bulk = [
-					{},
 					random_query,
-					{},
 					query_easy_negative,
-					{},
 					query_hard_negative,
 				]
 				for query in bulk:
-					if query:
-						query["_source"] = ["all_text", "index_start", "index_end"]
-				response = await dataset_provider.multisearch(index=ELASTIC_INDEX, bulk=bulk)
-				assert any(reply["_shards"]["failed"] != 0 for reply in response["responses"])
-				good_batch, easy_negative, hard_negative = response["responses"]
-				# good_batch = await dataset_provider.search_async(index=ELASTIC_INDEX, query=random_query)
-				# easy_negative = await dataset_provider.search_async(index=ELASTIC_INDEX, query=query_easy_negative)
-				# hard_negative = await dataset_provider.search_async(index=ELASTIC_INDEX, query=query_hard_negative)
+					query["query"] = {"bool": {"must": [query["query"], {"exists": {"field": "embedding.llama_3_17_v_proj.eos"}}]}}
+					query["_source"] = ["embedding.llama_3_17_v_proj.*", "entity_type", "phrase"]
+
+				good_batch = await dataset_provider.search_async(index=ELASTIC_INDEX, query=random_query)
+				easy_negative = await dataset_provider.search_async(index=ELASTIC_INDEX, query=query_easy_negative)
+				hard_negative = await dataset_provider.search_async(index=ELASTIC_INDEX, query=query_hard_negative)
+				for response in (good_batch, easy_negative, hard_negative):
+					assert response["_shards"]["failed"] == 0
 				chunked_bad_batch = extract(hard_negative["hits"]["hits"]) + extract(easy_negative["hits"]["hits"])
 				random.shuffle(chunked_bad_batch)
 				chunked_good_batch = extract(good_batch["hits"]["hits"])
@@ -296,17 +296,13 @@ class NERtrieveDataProvider(AbstractDataProvider):
 			is_fine_tune_llm: bool, documents: List[Any]
 	) -> torch.Tensor:
 		assert is_fine_tune_llm == False
-		if not isinstance(documents, str):
-			elastic_block = extract_elastic_block(documents)
-		else:
-			elastic_block = [(documents, (0, len(documents)))]
-		forward_in_llm = generate_embedding_batch(elastic_block)
-		start = torch.stack([item["start"] for item in forward_in_llm])
-		end = torch.stack([item["end"] for item in forward_in_llm])
-		eos = torch.stack([item["eos"] for item in forward_in_llm])
+		start = torch.tensor([item["embedding"]["llama_3_17_v_proj"]["start"] for item in documents])
+		end = torch.tensor([item["embedding"]["llama_3_17_v_proj"]["end"]  for item in documents])
+		eos = torch.tensor([item["embedding"]["llama_3_17_v_proj"]["eos"]  for item in documents])
+
 		embedding = choose_llm_representation(end=end, start=start, eos=eos, input_tokens=input_tokens)
 		embedding = embedding.to(device)
-		del forward_in_llm, start, end, eos
+		del start, end, eos
 		return embedding
 
 	def train_fine_types(self) -> List[str]:
@@ -324,8 +320,13 @@ class NERtrieveDataProvider(AbstractDataProvider):
 			return self.entity_name_embeddings
 
 		all_types = train_types() + test_types()
-		texts_with_length = [(text, (0, len(text))) for text in all_types]
-		forward_in_llm = generate_embedding_batch(texts_with_length)
+		read_llm_forward_from_file = json.load(open("nertrieve_train_name_to_tensor.json"))
+		forward_in_llm = []
+		for item in read_llm_forward_from_file:
+			result = {}
+			for repr in ("eos", "start", "end"):
+				result[repr] = torch.tensor(item[repr]).to(device)
+			forward_in_llm.append(result)
 		if entity_name_strategy == "end_eos":
 			layer_to_tensor = {
 				text: torch.cat((llm_output["end"], llm_output["eos"]))
@@ -351,7 +352,7 @@ if __name__ == "__main__":
 	fine_tune_llm = FineTuneLLM()
 
 	####
-	clearml_poc.clearml_init(queue_name='a100_gpu')
+	clearml_poc.clearml_init(queue_name='dsicsgpu')
 	mlp_args = Arguments()
 	llm_args = FineTuneLLM()
 	clearml_poc.clearml_connect_hyperparams(mlp_args, "mlp_args")
@@ -360,12 +361,12 @@ if __name__ == "__main__":
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 	assert torch.cuda.is_available(), "no gpu available"
 
-	layer = llm_args.layer
-	llm = LLMInterface(
-		interested_layers=[llm_args.layer],
-		max_llm_layer=llm_args.max_llm_layer
-	)
-	llm.model.eval()
+	# layer = llm_args.layer
+	# llm = LLMInterface(
+	# 	interested_layers=[llm_args.layer],
+	# 	max_llm_layer=llm_args.max_llm_layer
+	# )
+	# llm.model.eval()
 
 	# Instantiate the Fewnerd data provider
 	nertrieve_data_provider = NERtrieveDataProvider()

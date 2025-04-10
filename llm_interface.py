@@ -1,5 +1,5 @@
 from os import environ as env
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, T5EncoderModel
 import torch
 from transformers import BitsAndBytesConfig
 from huggingface_hub import login

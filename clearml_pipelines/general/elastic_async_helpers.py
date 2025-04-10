@@ -14,6 +14,7 @@ class EmbedderEnricher:
 		self.embedding_field = embedding_field
 		self.elastic_index = elastic_index
 		self.text_field = text_field
+		self.pbar = None
 
 
 	async def load_to_queue(
@@ -24,8 +25,8 @@ class EmbedderEnricher:
 			filter_query: str | None = None,
 	):
 		filter_query = filter_query or {"match_all": {}}
-		fields_to_sort = fields_to_sort or [{"text_id":"desc"}, {"doc_id":"desc"}]
-		query = {
+		fields_to_sort = fields_to_sort or [{"text_id":{"order":"desc"}}, {"doc_id":{"order":"desc"}}]
+		search_query = {
 			"query": {
 				"bool": {
 					"must": [
@@ -37,19 +38,29 @@ class EmbedderEnricher:
 				}
 			},
 			"_source": [self.text_field, "index_start", "index_end"],
-			"sort": fields_to_sort,
+			"sort":  fields_to_sort,
 			"size": batch_size
 		}
-		query_count_copy = deepcopy(query)
-		query_count_copy.pop("sort")
-		query_count_copy.pop("size")
-		query_count_copy.pop("_source")
-		total_count = await dataset_provider.count(self.elastic_index, query_count_copy)
-		pbar = tqdm(total=total_count)
-		async for result in dataset_provider.consume_big_query(query, self.elastic_index):
-			await queue.put(result)
-			pbar.update(len(result))
-		await queue.put(None)
+
+		count_query = {
+			"query": {
+				"bool": {
+					"must": [
+						filter_query,
+					],
+					"must_not": [
+						{"exists": {"field": self.embedding_field}},
+					]
+				}
+			}
+		}
+
+		total_count = await dataset_provider.count(self.elastic_index, count_query)
+		self.pbar = tqdm(total=total_count)
+		if total_count > 0:
+			async for result in dataset_provider.consume_big_query(search_query, self.elastic_index):
+				await queue.put(result)
+			await queue.put(None)
 
 
 	def generate_text_to_embedding_dict(self, batch) -> dict[str, torch.Tensor]:
@@ -75,10 +86,8 @@ class EmbedderEnricher:
 			batch = await queue.get()
 			if batch is None:
 				break
-			try:
-				bulk = self.generate_embedding_batch(batch)
-				response = await dataset_provider.bulk(bulk)
-				del batch
-			except Exception as e:
-				print(json.dumps({"error": str(e)}))
-
+			bulk = self.generate_embedding_batch(batch)
+			response = await dataset_provider.bulk(bulk)
+			self.pbar.update(len(bulk))
+			del batch
+			del bulk

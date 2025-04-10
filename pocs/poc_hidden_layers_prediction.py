@@ -279,7 +279,7 @@ def main():
 
     assert torch.cuda.is_available(), "no gpu available"
     global llm
-    LLM_ID = "meta-llama/Llama-3.3-70B-Instruct"
+    LLM_ID = "meta-llama/Llama-3.1-8B"
     llm = llm_interface.LLMInterface(LLM_ID)
 
     types = ['island', 'athlete', 'politicalparty', 'actor', 'software', 'sportsfacility', 'weapon', 'food', 'election',

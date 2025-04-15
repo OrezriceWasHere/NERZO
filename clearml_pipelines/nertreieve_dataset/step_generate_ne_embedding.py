@@ -145,7 +145,7 @@ if __name__ == "__main__":
 
 	mlp_layer = {"layer_id": "f77030ed719f43d0bb7b71314fa46257",
 	"slow_down_intentionally": False,
-	"elasticsearch_index": "multiconer_test,multiconer_train,multiconer_validation",}
+	"elasticsearch_index": "nertrieve_test",}
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")
 	slow_down_intentially = mlp_layer["slow_down_intentionally"]
 	BATCH_SIZE = 1000

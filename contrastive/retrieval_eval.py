@@ -37,7 +37,7 @@ class RetrievalEval(abc.ABC):
 		self.embedding_per_type = entity_to_embedding
 		self.all_test_types = list(entity_to_embedding.keys())
 		self.entity_field = self.entity_type_field_name()
-		self.semaphore = asyncio.Semaphore(20)
+		self.semaphore = asyncio.Semaphore(5)
 		self.text_id_to_labels = self.calc_text_id_to_labels()
 		self.is_bm25 = is_bm25
 

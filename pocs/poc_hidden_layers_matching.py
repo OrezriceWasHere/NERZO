@@ -7,13 +7,13 @@ import matplotlib.pyplot as plt
 from itertools import combinations
 from tqdm import tqdm
 import clearml_poc
-import llama3_interface
+import llm_interface
 from random import shuffle
 import numpy as np
 
 from torch.nn.functional import normalize
 
-llm: llama3_interface.LLama3Interface = None
+llm: llm_interface.llmInterface = None
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -37,13 +37,13 @@ def match_entity_with_strongest_word(entity, possible_matches):
     global llm
 
 
-    tokens = llama3.tokenize([entity["text"], possible_matches[0]["text"]])
-    start1, end1 = llama3.tokens_indices_part_of_sentence(entity["text"], entity["phrase"])
-    possible_matches_ranges = [llama3.tokens_indices_part_of_sentence(phrase["text"], phrase["phrase"])
+    tokens = llm.tokenize([entity["text"], possible_matches[0]["text"]])
+    start1, end1 = llm.tokens_indices_part_of_sentence(entity["text"], entity["phrase"])
+    possible_matches_ranges = [llm.tokens_indices_part_of_sentence(phrase["text"], phrase["phrase"])
                                for phrase in possible_matches]
 
 
-    h = torch.stack(llama3.get_hidden_layers(tokens)).to(device)
+    h = torch.stack(llm.get_hidden_layers(tokens)).to(device)
     h1, h2 = torch.split(h, [1, 1], dim=1)
 
     h1 = h1[:, :, end1 - 1, :]
@@ -73,7 +73,7 @@ def main():
 
     assert torch.cuda.is_available(), "no gpu available"
     global llm
-    llama3 = llama3_interface.LLama3Interface()
+    llm = llm_interface.llmInterface()
 
     layers_count = 33
     all_sim1, all_sim2, all_sim3 = torch.zeros(layers_count), torch.zeros(layers_count), torch.zeros(layers_count)

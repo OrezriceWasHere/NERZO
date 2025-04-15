@@ -24,8 +24,8 @@ class NERtrieveEvalZeroShot(RetrievalEval):
 	def entity_type_field_name(self):
 		return 'entity_type'
 
-	def get_embedding_field_name(self):
-		return 'embedding.llama_3_17_v_proj.eos'
+	# def get_embedding_field_name(self):
+	# 	return 'embedding.llama_3_17_v_proj.eos'
 
 	def anchors(self):
 		return {
@@ -321,7 +321,7 @@ if __name__ == '__main__':
 	clearml_poc.clearml_init(task_name='eval nertrieve', queue_name='dsicsgpu')
 
 	layer_obj = {
-		"layer_id": "137515e67cb14851b85d55846e630337",
+		"layer_id": "f77030ed719f43d0bb7b71314fa46257",
 		"llm_layer": FineTuneLLM.layer,
 		"llm_id": FineTuneLLM.llm_id,
 		"elasticsearch_index": 'nertrieve_test',
@@ -341,8 +341,9 @@ if __name__ == '__main__':
 	entity_type_to_embedding = {}
 	for db_record in tqdm(entity_types["hits"]["hits"]):
 		entity_name = db_record["_source"]["entity_description"]
-		entity_embedding = db_record["_source"]["embedding.llama_3_17_v_proj.eos"]
-		entity_type_to_embedding[entity_name] = entity_embedding
+		entity_end = db_record["_source"]["embedding.llama_3_17_v_proj.end"]
+		ne_embedding = mlp(torch.tensor(entity_end)).tolist()
+		entity_type_to_embedding[entity_name] = ne_embedding
 
 		# update the docuemnt with the embedding field
 

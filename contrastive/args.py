@@ -12,12 +12,12 @@ class Arguments:
 
     is_hidden_layer: bool = True
     batch_size: int = 50
-    instances_per_type: int = 50
+    instances_per_type: int = 100
 
     llm_layer: str = "llama_3_17_v_proj"
 
-    input_tokens: str = "start_eos_pair"  # [possible_values: "end", "start_end_pair", "diff","start_eos_pair"]
-    entity_name_embeddings: str = "end_eos"
+    input_tokens: str = "end"  # [possible_values: "end", "start_end_pair", "diff","start_eos_pair"]
+    entity_name_embeddings: str = "end"
 
     fine_tune_llm: bool = False
     disable_similarity_training: bool = False
@@ -56,6 +56,6 @@ def dataclass_decoder(dct: dict, cls: Type[Any]) -> Any:
 @dataclass
 class FineTuneLLM:
     llm_id: str = "meta-llama/Meta-Llama-3.1-8B"
-    layer: str = "model.layers.17.self_attn.v_proj"
+    layer: str = "model"
     mlp_head_model_id_from_clearml: str = "df186502700540649bfc012cb7f0a3a6"
-    max_llm_layer: Optional[int] = 18
+    max_llm_layer: Optional[int] = None

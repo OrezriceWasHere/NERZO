@@ -1,6 +1,6 @@
 torch >= 2.0.0
 tqdm
-elasticsearch[async]
+elasticsearch[async]==8.17.2
 clearml
 openai
 scikit-learn
@@ -15,7 +15,7 @@ pandas
 peft
 aiofiles
 aiohttp
-sentence_transformers
+sentence_transformers==2.7.0
 datasets
 einops
 info-nce-pytorch

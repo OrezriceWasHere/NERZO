@@ -25,7 +25,7 @@ class MulticonerEval(RetrievalEval):
 		super(MulticonerEval, self).__init__(
 			index='multiconer_validation,multiconer_train,multiconer_test',
 			layer=layer,
-			entity_to_embedding=entity_to_embedding
+			entity_to_embedding=entity_to_embedding,
 		)
 
 	def entity_type_field_name(self):
@@ -146,13 +146,13 @@ class MulticonerEval(RetrievalEval):
 			text_to_labels = json.load(f)
 
 		return text_to_labels
-	#
-	# def get_embedding_field_name(self):
-	# 	return 'embedding.llama_3_17_v_proj.end'
+
+	def get_embedding_field_name(self):
+		return 'nvidia/nv-embed-v2@output'
 
 if __name__ == '__main__':
 	layer_obj = {
-		"layer_id": "f77030ed719f43d0bb7b71314fa46257",
+		"layer_id": "48d1f5c0237149aa9dedd0c028b25b3c",
 		"llm_layer": FineTuneLLM.layer,
 		"llm_id": FineTuneLLM.llm_id,
 		"elasticsearch_index": 'multiconer_validation,multiconer_test,multiconer_train',
@@ -192,11 +192,14 @@ if __name__ == '__main__':
 	entity_types = dataset_provider.search(
 			query={"query": {"match_all": {}}}, index="multiconer_entity_name_to_embedding", size=100
 			)
+
 	entity_type_to_embedding = {}
-	for db_record in entity_types["hits"]["hits"]:
+	for db_record in tqdm(entity_types["hits"]["hits"]):
 			name = db_record["_source"]["entity_name"].lower()
-			llama_embedding = db_record["_source"]["embedding.meta-llama/meta-llama-3-1-8b@model-layers-17-self_attn-v_proj.end"]
-			embedding = mlp(torch.tensor(llama_embedding)).tolist()
+			embedding = db_record["_source"]["nvidia/nv-embed-v2@output"]
+			entity_type_to_embedding[name] = embedding
+			# embedding = db_record["_source"]["intfloat/e5-mistral-7b-instruct@output"]
+			# embedding = mlp(torch.tensor(llama_embedding)).tolist()
 			entity_type_to_embedding[name] = embedding
 		# end =  torch.tensor(db_record["_source"][f'embedding.{layer}.end'])
 		# eos =  torch.tensor(db_record["_source"][f'embedding.{layer_name}.eos'])
@@ -207,6 +210,5 @@ if __name__ == '__main__':
 	layer = layer_obj["layer_id"]
 	llm_layer = layer_obj["llm_layer"]
 	llm_id = layer_obj["llm_id"]
-	multiconer = MulticonerEval(layer=layer, entity_to_embedding=entity_type_to_embedding)
+	multiconer = MulticonerEval(layer=layer, entity_to_embedding=entity_type_to_embedding,)
 	multiconer.eval_zero_shot()
-	multiconer.eval_one_shot()

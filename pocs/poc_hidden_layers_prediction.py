@@ -12,6 +12,8 @@ import numpy as np
 from sklearn import metrics
 import torch.nn.functional as F
 import pandas as pd
+from sklearn.metrics import roc_auc_score
+import numpy as np
 
 llm: llm_interface.LLMInterface = None
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -202,6 +204,8 @@ keys, item_to_group, group_to_item, group_to_indices, group_lcp_meanings = None,
 
 def find_longest_common_prefix(words):
 	# Initialize the longest common prefix to the first word
+	if not words:
+		return ""
 	longest_common_prefix = words[0]
 
 	# Loop through each word in the list of words
@@ -286,6 +290,13 @@ def find_threshold_hooked_epoch(pairs, different_type, epoch):
 		},
 		index=list(range(len(keys)))
 	)
+	auc_scores = [roc_auc_score(y[i], x[i]) if len(np.unique(y[i])) > 1 else None for i in range(x.shape[0])]
+	clearml_poc.add_scatter(
+		title="evaluating each layer using auc",
+		series="same part of entity tag",
+		iteration=x.shape[1] / 2,
+		values=auc_scores
+	)
 	clearml_poc.add_table(
 		title="optimal threshold for each layer",
 		series="llm model",
@@ -342,7 +353,7 @@ def main():
 
 	assert torch.cuda.is_available(), "no gpu available"
 	global llm
-	LLM_ID = "meta-llama/Meta-Llama-3.1-8B"
+	LLM_ID = "numind/NuNER-v2.0"
 	llm = llm_interface.LLMInterface(LLM_ID)
 
 	types = ['island', 'athlete', 'politicalparty', 'actor', 'software', 'sportsfacility', 'weapon', 'food', 'election',

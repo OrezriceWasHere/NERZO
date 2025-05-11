@@ -20,11 +20,11 @@ class LLama317SentenceEnricher(EmbedderEnricher):
 
 		self.model = LLMInterface(
 			llm_id=sentence_embedder_id,
-			max_llm_layer=18,
+			max_llm_layer=None,
 			interested_layers=[layer]
 		)
 		self.layer = layer
-		self.db_name = "llama_3_17_v_proj"
+		self.db_name = "llama_3_final_model"
 
 
 	def generate_embedding_batch(self, batch):
@@ -79,11 +79,21 @@ def forward_sentence_embedder_in_index(
 	embedding_field = {
 		"embedding": {
 			"properties": {
-				"llama_3_17_v_proj": {
+				"llama_3_final_model": {
 					"properties": {
 						"eos": {
 							"type": "dense_vector",
-							"dims": 1024,
+							"dims": 4096,
+							"index": False
+						},
+						"end": {
+							"type": "dense_vector",
+							"dims": 4096,
+							"index": False
+						},
+						"start": {
+							"type": "dense_vector",
+							"dims": 4096,
 							"index": False
 						}
 					}
@@ -123,7 +133,7 @@ def executing_pipeline(
 		**kwargs
 ):
 	assert torch.cuda.is_available(), "no cuda"
-	embedding_field_name = "embedding.llama_3_17_v_proj.eos"
+	embedding_field_name = "embedding.llama_3_final_model.eos"
 	forward_sentence_embedder_in_index(
 		elastic_index=dataset_index,
 		embedding_field_name=embedding_field_name,
@@ -142,9 +152,9 @@ if __name__ == "__main__":
 	)
 
 	conf = {
-		"dataset_index": "nertrieve_test",
+		"dataset_index": "fewnerd_v4_dev,fewnerd_v4_train,fewnerd_v4_test",
 		"naming_index": "nertrieve_entity_name_to_embedding",
-		"db_name": "embedding.llama_3_17_v_proj"
+		"db_name": "embedding.llama_3_final_model"
 	}
 
 	llm_args = asdict(FineTuneLLM())

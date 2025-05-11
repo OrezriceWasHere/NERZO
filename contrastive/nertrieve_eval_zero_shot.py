@@ -18,14 +18,14 @@ class NERtrieveEvalZeroShot(RetrievalEval):
 		super(NERtrieveEvalZeroShot, self).__init__(
 			index='nertrieve_test',
 			layer=layer,
-			entity_to_embedding=entity_to_embedding
+			entity_to_embedding=entity_to_embedding,
 		)
 
 	def entity_type_field_name(self):
 		return 'entity_type'
 
-	# def get_embedding_field_name(self):
-	# 	return 'embedding.llama_3_17_v_proj.eos'
+	def get_embedding_field_name(self):
+		return 'embedding.llama_3_17_v_proj.end'
 
 	def anchors(self):
 		return {
@@ -342,8 +342,8 @@ if __name__ == '__main__':
 	for db_record in tqdm(entity_types["hits"]["hits"]):
 		entity_name = db_record["_source"]["entity_description"]
 		entity_end = db_record["_source"]["embedding.llama_3_17_v_proj.end"]
-		ne_embedding = mlp(torch.tensor(entity_end)).tolist()
-		entity_type_to_embedding[entity_name] = ne_embedding
+		# ne_embedding = mlp(torch.tensor(entity_end)).tolist()
+		entity_type_to_embedding[entity_name] = entity_end
 
 		# update the docuemnt with the embedding field
 

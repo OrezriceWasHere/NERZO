@@ -1,31 +1,25 @@
 import abc
 import asyncio
-import random
-from abc import abstractclassmethod
-
 from sklearn.metrics import ndcg_score
 from collections import defaultdict
 import pandas as pd
 import torch
 from tqdm import tqdm
-import clearml_helper
 import dataset_provider
-import contrastive.fewnerd_processor
 import clearml_poc
-from clearml_pipelines.fewnerd_pipeline import fewnerd_dataset
-from clearml_pipelines.nertreieve_dataset import nertrieve_processor
-from contrastive.args import FineTuneLLM, Arguments
+from contrastive import fewnerd_processor
 
 
 def flatten_dict(d, parent_key='', sep='.'):
-    items = []
-    for k, v in d.items():
-        new_key = f"{parent_key}{sep}{k}" if parent_key else k  # Construct new key
-        if isinstance(v, dict):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())  # Recursively flatten
-        else:
-            items.append((new_key, v))  # Store key-value pair
-    return dict(items)
+	items = []
+	for k, v in d.items():
+		new_key = f"{parent_key}{sep}{k}" if parent_key else k  # Construct new key
+		if isinstance(v, dict):
+			items.extend(flatten_dict(v, new_key, sep=sep).items())  # Recursively flatten
+		else:
+			items.append((new_key, v))  # Store key-value pair
+	return dict(items)
+
 
 class RetrievalEval(abc.ABC):
 
@@ -37,10 +31,9 @@ class RetrievalEval(abc.ABC):
 		self.embedding_per_type = entity_to_embedding
 		self.all_test_types = list(entity_to_embedding.keys())
 		self.entity_field = self.entity_type_field_name()
-		self.semaphore = asyncio.Semaphore(5)
+		self.semaphore = asyncio.Semaphore(2)
 		self.text_id_to_labels = self.calc_text_id_to_labels()
 		self.is_bm25 = is_bm25
-
 
 	def eval_zero_shot(self):
 		zero_shot_tasks = self.generate_zero_shot_task()
@@ -52,7 +45,6 @@ class RetrievalEval(abc.ABC):
 		total_amount = sum([len(x) for x in self.anchors().values()])
 		self.pbar = tqdm(total=total_amount)
 		self.execute_tasks(one_shot_tasks, series='one shot')
-
 
 	def generate_zero_shot_task(self):
 		all_types = self.all_test_types
@@ -94,7 +86,7 @@ class RetrievalEval(abc.ABC):
 		embedding_field = self.get_embedding_field_name()
 		assert count_type > 0, "no count for entity type {}".format(entity_type)
 		result = defaultdict(list)
-		sizes = [10, 50, 100,  200, 500, count_type]
+		sizes = [10, 50, 100, 200, 500, count_type]
 		descriptions = ["10", "50", "100", "200", "500", "size"]
 		for doc_id in ids:
 			document = await self.get_item_by_id(doc_id)
@@ -119,7 +111,7 @@ class RetrievalEval(abc.ABC):
 		result["size"] = count_type
 		self.pbar.update(1)
 		avg_result = {
-			key: (sum(values) / len(values) ) if isinstance(values, list) else values
+			key: (sum(values) / len(values)) if isinstance(values, list) else values
 			for key, values in result.items()
 		}
 		return avg_result
@@ -128,7 +120,7 @@ class RetrievalEval(abc.ABC):
 		count_type = await self.get_count_entity_type(entity_type)
 		assert count_type > 0, "no count for entity type {}".format(entity_type)
 		result = {}
-		sizes = [10, 50, 100,  200, 500, count_type]
+		sizes = [10, 50, 100, 200, 500, count_type]
 		descriptions = ["10", "50", "100", "200", "500", "size"]
 		embedding = self.embedding_per_type[entity_type]
 		async with self.semaphore:
@@ -147,12 +139,11 @@ class RetrievalEval(abc.ABC):
 			)
 			result.update(size_eval)
 
-
 		self.pbar.update(1)
 		result["size"] = count_type
 		return result
 
-	def evaluate(self, similar_doc, k, size_desc, entity_type,  count_type, pop_max=False):
+	def evaluate(self, similar_doc, k, size_desc, entity_type, count_type, pop_max=False):
 		result = {}
 		top_k_results = similar_doc[:k] if not pop_max else similar_doc[1: k + 1]
 		assert len(top_k_results) == k, f"could not fetch {size_desc} docs for {entity_type}"
@@ -178,7 +169,10 @@ class RetrievalEval(abc.ABC):
 	def get_embedding_field_name(self):
 		return f'embedding.{self.layer}'
 
-	def vector_query(self, embedding, k):
+	def vector_query(self, embedding, k, filter_out_text=None):
+		if filter_out_text and "fewnerd" in self.index:
+			filter_out_text = fewnerd_processor.type_to_name()[filter_out_text]
+
 		embedding_field = self.get_embedding_field_name()
 		query = {
 			"size": min(3 * k, 10000),
@@ -240,7 +234,7 @@ class RetrievalEval(abc.ABC):
 		if self.is_bm25:
 			query = self.bm25_query(k, entity_type, phrase)
 		else:
-			query = self.vector_query(embedding, k)
+			query = self.vector_query(embedding, k, filter_out_text=entity_type)
 
 		async for batch in dataset_provider.consume_big_query(query=query, index=self.index):
 			if len(score_list) == k:
@@ -254,9 +248,13 @@ class RetrievalEval(abc.ABC):
 		return {text_id: {"labels": self.text_id_to_labels[text_id], "score": score_list[text_id]} for text_id in
 		        score_list}
 
-
 	async def get_count_entity_type(self, entity_type):
 		embedding_filed = self.get_embedding_field_name()
+		if  "fewnerd" in self.index:
+			filter_out_text = fewnerd_processor.type_to_name()[entity_type]
+		else:
+			filter_out_text = ""
+
 		query = {
 		  "size": 0,
 		  "query": {
@@ -278,7 +276,7 @@ class RetrievalEval(abc.ABC):
 		    }
 		  }
 		}
-		x =  await dataset_provider.search_async(index=self.index, query=query)
+		x = await dataset_provider.search_async(index=self.index, query=query)
 		return x["aggregations"]["unique_text_ids"]["value"]
 
 	@abc.abstractmethod
@@ -292,4 +290,3 @@ class RetrievalEval(abc.ABC):
 	@abc.abstractmethod
 	def calc_text_id_to_labels(self):
 		raise NotImplementedError()
-

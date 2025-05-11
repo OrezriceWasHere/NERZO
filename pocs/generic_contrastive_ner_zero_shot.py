@@ -214,18 +214,18 @@ class AbstractMLPTrainer:
 
 	async def one_type_epoch_training(self, fine_type, epoch):
 		results = defaultdict(list)
-		async for anchor, good_batch, bad_batch in self.iterate_over_train(fine_type, similarity_strategy='instance'):
-			self.instances_optimizer.zero_grad()
-			self.types_optimizer.zero_grad()
-			similarity = partial(
-				self.compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch
-				)
-
-			for metric, value in similarity(self.instances_model, anchor=anchor).items():
-				results[f'instances_{metric}'].extend(value)
-
-			self.instances_optimizer.step()
-			self.types_optimizer.step()
+		# async for anchor, good_batch, bad_batch in self.iterate_over_train(fine_type, similarity_strategy='instance'):
+		# 	self.instances_optimizer.zero_grad()
+		# 	self.types_optimizer.zero_grad()
+		# 	similarity = partial(
+		# 		self.compute_similarity_base, positive_examples=good_batch, negative_examples=bad_batch, epoch=epoch
+		# 		)
+		#
+		# 	for metric, value in similarity(self.instances_model, anchor=anchor).items():
+		# 		results[f'instances_{metric}'].extend(value)
+		#
+		# 	self.instances_optimizer.step()
+		# 	self.types_optimizer.step()
 
 		async for anchor, good_batch, bad_batch in self.iterate_over_train(fine_type, similarity_strategy='type'):
 			self.instances_optimizer.zero_grad()

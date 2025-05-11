@@ -27,7 +27,7 @@ def not_processed_documents_query():
 			}
 		},
 		"sort": [
-			{"text_id":{"order":"desc"}},
+			{"text_id":{"order":"asc"}},
 			"index_start"
 		],
 		"_source": [f"embedding.{args.llm_layer}.*", "entity_type"]
@@ -72,8 +72,9 @@ async def document_consumer(index, queue):
 			break
 		ids = [x["_id"] for x in records]
 		document_index = [x["_index"] for x in records]
+		placeholder = (torch.zeros((1024)) - 10000).tolist()
 		embedding_start = torch.tensor(
-			[item["_source"]["embedding"][args.llm_layer]["start"] for item in records],
+			[item["_source"]["embedding"][args.llm_layer].get("start", placeholder) for item in records],
 			device=device,
 			dtype=torch.double
 		).clone().detach()
@@ -92,6 +93,9 @@ async def document_consumer(index, queue):
 		for doc_id, embedding, doc_index in zip(ids, ne_embedding, document_index):
 			batch.append({"update": {"_index": doc_index, "_id": doc_id}})
 			batch.append({"doc": {f"embedding.{mlp_id}": embedding.tolist()}, "doc_as_upsert": True})
+			batch.append({"update": {"_index": doc_index, "_id": doc_id}})
+			batch.append({"script": {"source": "ctx._source['embedding']['llama_3_17_v_proj'].remove('start')"}})
+
 		x = await dataset_provider.bulk(batch)
 		if slow_down_intentially:
 			await asyncio.sleep(10)
@@ -143,7 +147,7 @@ if __name__ == "__main__":
 	assert torch.cuda.is_available()
 	device = torch.device("cuda:0")
 
-	mlp_layer = {"layer_id": "f77030ed719f43d0bb7b71314fa46257",
+	mlp_layer = {"layer_id": "48d1f5c0237149aa9dedd0c028b25b3c",
 	"slow_down_intentionally": False,
 	"elasticsearch_index": "nertrieve_test",}
 	clearml_poc.clearml_connect_hyperparams(mlp_layer, name="conf")

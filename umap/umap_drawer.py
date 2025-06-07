@@ -73,8 +73,8 @@ def main():
         embeddings = embeddings[keep]
         labels     = labels[keep]
 
-    # 5) Map each label to a color: chemicalthing as blue, sportsevent as green
-    label_to_color = {'chemicalthing': 'blue', 'sportsevent': 'green'}
+    # 5) Map each label to a color: chemicalthing as #4ED7F1, sportsevent as #FFFA8D
+    label_to_color = {'chemicalthing': '#03A791', 'sportsevent': '#F1BA88'}
     colors = [label_to_color.get(lbl, 'black') for lbl in labels]
 
     # 6) Plot scatter without labels, axes, or title

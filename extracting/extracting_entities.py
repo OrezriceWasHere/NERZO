@@ -15,6 +15,8 @@ from tqdm import tqdm
 
 import clearml_poc
 
+ENTITY_REGEX = re.compile(r"##(.*?)##")
+
 # ---------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------
@@ -29,7 +31,7 @@ SUBF         = "extractor"
 # ---------------------------------------------------------------------
 def extract_entities_with_positions(sentence: str, response: str):
     entities = []
-    for match in re.finditer(r"##(.*?)##", response):
+    for match in ENTITY_REGEX.finditer(response):
         entity_text = match.group(1)
         start_idx = sentence.find(entity_text)
         if start_idx != -1:
@@ -120,9 +122,11 @@ with torch.no_grad():
         prompt_len = enc["attention_mask"].sum(1)
 
         outs = model.generate(**enc, max_new_tokens=MAX_NEW)
+        decoded = tok.batch_decode([
+            seq[prompt_len[idx]:] for idx, seq in enumerate(outs)
+        ], skip_special_tokens=True)
 
-        for i, seq in enumerate(outs):
-            generated = tok.decode(seq[prompt_len[i]:], skip_special_tokens=True)
+        for i, generated in enumerate(decoded):
 
             # — predicted spans & offsets —
             preds_pos = extract_entities_with_positions(batch_sents[i], generated)
@@ -139,7 +143,6 @@ with torch.no_grad():
 
             sentence_hash = hashlib.sha1(batch_sents[i].encode()).hexdigest()
 
-            del results[sentence_hash]
             results[sentence_hash] = {
                 "id":        data[start+i]["id"],
                 "sentence":  batch_sents[i],
@@ -152,8 +155,8 @@ with torch.no_grad():
         f1   = 2*prec*rec/(prec+rec) if prec+rec else 0
         pbar.set_description(f"Prec {prec:.2f}  Rec {rec:.2f}  F1 {f1:.2f}")
 
-        torch.cuda.empty_cache()
-        gc.collect()
+    torch.cuda.empty_cache()
+    gc.collect()
 
 # ---------------------------------------------------------------------
 # Final report

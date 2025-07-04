@@ -13,10 +13,7 @@ Span-extraction evaluation on Few-NERD with CascadeNER.
 import gc
 import hashlib
 import json
-import os
-import random
 import re
-from collections import defaultdict
 from typing import Dict, List, Set, Tuple
 
 import torch
@@ -35,7 +32,7 @@ ENTITY_REGEX = re.compile(r"##(.*?)##")
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 100          # GPU batch
+BATCH_SIZE = 200          # GPU batch
 MAX_NEW    = 256          # generation cut-off
 N_EXAMPLES = 1000         # sample size (None ⇒ whole split)
 
@@ -211,7 +208,10 @@ if __name__ == "__main__":
                     "predicted": preds_pos,
                     "generated": generated,
                 }
-
+            del enc
+            del outs
+            del decoded
+            torch.cuda.empty_cache()
             prec = correct / pred_total if pred_total else 0
             rec  = correct / gold_total if gold_total else 0
             f1   = 2 * prec * rec / (prec + rec) if prec + rec else 0

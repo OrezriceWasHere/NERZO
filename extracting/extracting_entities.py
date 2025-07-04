@@ -147,7 +147,8 @@ with torch.no_grad():
                 "id":        data[start+i]["id"],
                 "sentence":  batch_sents[i],
                 "gold":      list(batch_gold[i]),
-                "predicted": preds_pos
+                "predicted": preds_pos,
+                "generated": generated
             }
 
         prec = correct / pred_total if pred_total else 0

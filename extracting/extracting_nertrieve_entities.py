@@ -38,9 +38,9 @@ ENTITY_REGEX = re.compile(r"##(.*?)##")
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 200  # GPU batch
+BATCH_SIZE = 1  # GPU batch
 MAX_NEW = 256     # generation cut-off
-N_EXAMPLES = 1000  # number of sentences to evaluate
+N_EXAMPLES = 100  # number of sentences to evaluate
 
 REPO = "CascadeNER/models_for_CascadeNER"
 SUBF = "extractor"
@@ -48,7 +48,7 @@ SUBF = "extractor"
 # URLs for the supervised NERtrieve dataset
 DATA_URLS = [
     (
-        "https://storage.googleapis.com/nertrieve_dataset/supervised_ner/NERetrive_sup_test.jsonl.bz2",
+        "https://storage.googleapis.com/neretrieve_dataset/supervised_ner/NERetrive_sup_test.jsonl.bz2",
         "nertrieve_sup_test.jsonl.bz2",
     ),
 ]

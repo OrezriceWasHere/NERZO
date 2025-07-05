@@ -32,7 +32,7 @@ ENTITY_REGEX = re.compile(r"##(.*?)##")
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 200          # GPU batch
+BATCH_SIZE = 25          # GPU batch
 MAX_NEW    = 256          # generation cut-off
 N_EXAMPLES = 1000         # sample size (None ⇒ whole split)
 
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     # Prepare sentences, gold lists/sets, prompts
     # ---------------------------------------------------------------
     sentences, gold_lists, gold_sets, prompts = [], [], [], []
-    for ex in data[: N_EXAMPLES if N_EXAMPLES else None]:
+    for ex in data:
         sent = " ".join(ex["tokens"])
         g_list, g_set = gold_spans(ex["tokens"], ex["ner_tags"])
         sentences.append(sent)

@@ -32,7 +32,7 @@ ENTITY_REGEX = re.compile(r"##(.*?)##")
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 200          # GPU batch
+BATCH_SIZE = 25          # GPU batch
 MAX_NEW    = 256          # generation cut-off
 N_EXAMPLES = 1000         # sample size (None ⇒ whole split)
 

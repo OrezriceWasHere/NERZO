@@ -1,0 +1,137 @@
+import json
+import os
+from collections import defaultdict
+from typing import Dict, List
+
+import numpy as np
+
+import torch
+import pandas as pd
+from clearml import Dataset
+import faiss
+
+import clearml_poc
+import clearml_helper
+from llm_interface import LLMInterface
+from contrastive import fewnerd_processor
+from contrastive.args import Arguments, FineTuneLLM
+
+
+class FewNerdRPrecision:
+    """Evaluate FewNERD retrieval using R-precision."""
+
+    def __init__(self, mlp_id: str):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.mlp = clearml_helper.get_mlp_by_id(mlp_id, device=self.device)
+        self.args: Arguments = clearml_helper.get_args_by_mlp_id(mlp_id)
+        self.llm = LLMInterface(llm_id=FineTuneLLM.llm_id,
+                                max_llm_layer=FineTuneLLM.max_llm_layer)
+        self.layer = self.args.llm_layer
+        self.type_to_name = fewnerd_processor.type_to_name()
+        self.embeddings = self._load_embeddings()
+        self.metadata = self._load_metadata()
+        self.fine_type_to_ids = self._calc_fine_type_to_ids()
+        self.fine_type_embeddings = self._embed_fine_types()
+        self.index, self.index_to_tid = self._build_index()
+        self.fine_types = list(self.fine_type_embeddings.keys())
+
+    @staticmethod
+    def _load_dataset(name: str) -> str:
+        ds = Dataset.get(dataset_name=name, dataset_project="fewnerd_pipeline")
+        return os.path.join(ds.get_local_copy(), name)
+
+    def _load_embeddings(self) -> Dict[str, List[torch.Tensor]]:
+        path = self._load_dataset("llm_mlp_embeddings.json")
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return {tid: [torch.tensor(e) for e in emb_list] for tid, emb_list in data.items()}
+
+    def _load_metadata(self) -> Dict[str, Dict]:
+        path = self._load_dataset("span_extraction_results.json")
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def _calc_fine_type_to_ids(self) -> Dict[str, set]:
+        mapping: Dict[str, set] = defaultdict(set)
+        for tid, record in self.metadata.items():
+            for g in record.get("gold", []):
+                mapping[g["fine_type"]].add(tid)
+        return mapping
+
+    def _embed_fine_types(self) -> Dict[str, torch.Tensor]:
+        result = {}
+        for fine_type in self.fine_type_to_ids.keys():
+            readable = self.type_to_name.get(fine_type, fine_type)
+            tokens = self.llm.tokenize(readable).to(self.device)
+            with torch.no_grad():
+                hidden = self.llm.get_llm_at_layer(tokens, layer=self.layer)
+            start = hidden[0, 0]
+            end = hidden[0, -1]
+            rep = fewnerd_processor.choose_llm_representation(
+                end=end.cpu().tolist(), start=start.cpu().tolist(),
+                input_tokens=self.args.input_tokens)
+            with torch.no_grad():
+                emb = self.mlp(rep.to(self.device)).cpu()
+            result[fine_type] = emb
+        return result
+
+    def _build_index(self):
+        all_vecs = []
+        id_map: List[str] = []
+        for tid, embs in self.embeddings.items():
+            for emb in embs:
+                vec = emb.numpy().astype('float32')
+                norm = np.linalg.norm(vec) + 1e-10
+                all_vecs.append(vec / norm)
+                id_map.append(tid)
+        if not all_vecs:
+            raise ValueError("No embeddings loaded")
+        dim = all_vecs[0].shape[0]
+        index = faiss.IndexFlatIP(dim)
+        index.add(np.stack(all_vecs))
+        return index, id_map
+
+    def _search_all(self):
+        """Search the index for all fine-type embeddings at once."""
+        query_vecs = []
+        for ft in self.fine_types:
+            vec = self.fine_type_embeddings[ft].numpy().astype("float32")
+            norm = np.linalg.norm(vec) + 1e-10
+            query_vecs.append(vec / norm)
+        queries = np.stack(query_vecs)
+        print("Starting Faiss search for all fine types...")
+        D, I = self.index.search(queries, len(self.index_to_tid))
+        print("Finished Faiss search.")
+        return D, I
+
+    def evaluate(self) -> pd.DataFrame:
+        rows = {}
+        D, I = self._search_all()
+        for idx_ft, ft in enumerate(self.fine_types):
+            relevant = self.fine_type_to_ids[ft]
+            retrieved = []
+            seen = set()
+            for idx in I[idx_ft]:
+                tid = self.index_to_tid[idx]
+                if tid not in seen:
+                    retrieved.append(tid)
+                    seen.add(tid)
+                    if len(retrieved) == len(relevant):
+                        break
+            r_prec = len(set(retrieved) & relevant) / len(relevant) if relevant else 0.0
+            rows[ft] = {"R-precision": r_prec, "size": len(relevant)}
+        df = pd.DataFrame.from_dict(rows, orient="index")
+        clearml_poc.add_table(title="R-precision per fine type", series="r_precision", iteration=0, table=df)
+        clearml_poc.add_table(title="average R-precision", series="r_precision", iteration=0, table=df.mean().to_frame())
+        return df
+
+
+def main():
+    clearml_poc.clearml_init(task_name="FewNERD R-Precision Evaluation", project_name="fewnerd_pipeline")
+    mlp_id = FineTuneLLM.mlp_head_model_id_from_clearml
+    evaluator = FewNerdRPrecision(mlp_id)
+    evaluator.evaluate()
+
+
+if __name__ == "__main__":
+    main()

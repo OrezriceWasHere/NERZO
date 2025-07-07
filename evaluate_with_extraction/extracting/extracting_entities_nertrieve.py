@@ -198,6 +198,7 @@ if __name__ == "__main__":
             )
 
             for i, generated in enumerate(decoded):
+                sent_hash = hashlib.sha1(b_sents[i].encode()).hexdigest()
                 preds_pos = extract_entities_with_positions(b_sents[i], generated)
                 for p in preds_pos:
                     assert b_sents[i][p["start"] : p["end"]] == p["text"]
@@ -207,7 +208,6 @@ if __name__ == "__main__":
                 pred_total += len(preds_txt)
                 correct += len(b_gold_set[i] & preds_txt)
 
-                sent_hash = hashlib.sha1(b_sents[i].encode()).hexdigest()
                 results[sent_hash] = {
                     "id": ids[start + i],
                     "sentence": b_sents[i],
@@ -244,3 +244,4 @@ if __name__ == "__main__":
     cl_ds.add_tags([results_path])
     cl_ds.upload()
     cl_ds.finalize()
+

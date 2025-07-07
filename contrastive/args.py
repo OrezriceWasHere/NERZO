@@ -56,6 +56,6 @@ def dataclass_decoder(dct: dict, cls: Type[Any]) -> Any:
 @dataclass
 class FineTuneLLM:
     llm_id: str = "meta-llama/Meta-Llama-3.1-8B"
-    layer: str = "model"
-    mlp_head_model_id_from_clearml: str = "df186502700540649bfc012cb7f0a3a6"
+    layer: str = "model.layers.17.self_attn.v_proj"
+    mlp_head_model_id_from_clearml: str = "48d1f5c0237149aa9dedd0c028b25b3c"
     max_llm_layer: Optional[int] = None

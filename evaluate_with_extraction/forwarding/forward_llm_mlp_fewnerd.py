@@ -12,7 +12,7 @@ from contrastive.args import Arguments, FineTuneLLM
 from contrastive import fewnerd_processor
 import clearml_helper
 
-BATCH_SIZE = 25
+BATCH_SIZE = 10
 MAX_BATCHES = 40  # ~1000 records for debugging
 
 
@@ -38,7 +38,6 @@ def process_batch_llm(
     """Forward a batch of texts through the LLM and collect entity representations."""
     sentences = [record["sentence"] for _, record in batch]
     tokens = llm.tokenize(sentences).to(device)
-    llm.model.eval()
 
     with torch.no_grad():
         hidden = llm.get_llm_at_layer(tokens, layer)
@@ -49,6 +48,8 @@ def process_batch_llm(
     for (text_id, record), h in zip(batch, hidden):
         for ent in record.get("predicted", []):
             indices = (ent["start"], ent["end"])
+            if ent["end"] == ent["start"]:
+                continue
             tok_idx = llm.token_indices_given_text_indices(record["sentence"], indices)
             start = h[tok_idx[0] - 1]
             end = h[tok_idx[1]]
@@ -96,6 +97,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     llm = LLMInterface(llm_id=llm_args.llm_id, max_llm_layer=llm_args.max_llm_layer)
     mlp = clearml_helper.get_mlp_by_id(llm_args.mlp_head_model_id_from_clearml, device=device)
+    mlp = mlp.float()
     llm.model.eval()
     mlp.eval()
 
@@ -116,9 +118,11 @@ def main():
                 result.setdefault(k, []).extend(v)
             batch = []
             batches_done += 1
-            if batches_done >= MAX_BATCHES:
-                break
-    if batch and batches_done < MAX_BATCHES:
+            # if batches_done >= MAX_BATCHES:
+            #     break
+    # if batch and batches_done < MAX_BATCHES:
+    if batch and batches_done :
+
         llm_reprs, owners = process_batch_llm(
             batch, llm, llm_args.layer, args, device
         )

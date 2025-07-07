@@ -32,9 +32,8 @@ ENTITY_REGEX = re.compile(r"##(.*?)##")
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 25          # GPU batch
-MAX_NEW    = 256          # generation cut-off
-N_EXAMPLES = 1000         # sample size (None ⇒ whole split)
+BATCH_SIZE = 200          # GPU batch
+MAX_NEW    = 4096          # generation cut-off
 
 REPO   = "CascadeNER/models_for_CascadeNER"
 SUBF   = "extractor"
@@ -44,19 +43,103 @@ CONFIG = "supervised"     # Few-NERD config
 # --------------------------------------------------------------------
 # Helper ① – author’s positions extractor
 # --------------------------------------------------------------------
-def extract_entities_with_positions(sentence: str, response: str) -> List[Dict]:
-    """Return list of {'text','start','end'} for every ##…## chunk."""
-    entities: List[Dict[str, int | str]] = []
-    for m in ENTITY_REGEX.finditer(response):
-        ent_text = m.group(1)
-        start = sentence.find(ent_text)
-        if start != -1:
-            entities.append({"text": ent_text, "start": start, "end": start + len(ent_text)})
-        else:
-            for m2 in re.finditer(re.escape(ent_text), sentence):
-                entities.append({"text": ent_text, "start": m2.start(), "end": m2.end()})
-                break
+# ---------------------------------------------------------------------
+def _is_open(text: str, i: int, inside: bool) -> bool:
+    """Return True if the ## at position i should OPEN a span."""
+    if not inside:                      # stack is empty → first ## always opens
+        return True
+    nxt = i + 2
+    return nxt < len(text) and text[nxt].isalnum()
+
+
+def extract_entities(text: str, longest_only: bool = False
+                     ) -> List[Tuple[str, int, int]]:
+    """
+    Parse a sentence where entities are delimited with ## … ##,
+    handling patterns like ####Claremore## Lake##.
+
+    Returns [(entity_text, start, end)], offsets refer to the
+    text *after* all ## markers are stripped.
+    """
+    clean       : List[str] = []
+    clean_pos   : int       = 0
+    i           : int       = 0
+    stack       : List[int] = []
+    entities    : List[Tuple[str,int,int]] = []
+
+    while i < len(text):
+        if text.startswith("##", i):
+            if _is_open(text, i, inside=bool(stack)):
+                stack.append(clean_pos)                     # OPEN
+            elif stack:                                     # CLOSE
+                start = stack.pop()
+                entities.append(("".join(clean[start:clean_pos]),
+                                   start, clean_pos))
+            i += 2
+            continue
+
+        clean.append(text[i])                               # copy char
+        clean_pos += 1
+        i += 1
+
+    # keep outer-most spans only?
+    if longest_only:
+        outer: List[Tuple[str,int,int]] = []
+        for t, s, e in sorted(entities, key=lambda x: x[2]-x[1], reverse=True):
+            if not any(s >= os and e <= oe for _, os, oe in outer):
+                outer.append((t, s, e))
+        return outer
+
     return entities
+
+# ────────────────────────────────────────────────────────────
+# 2.  ALIGNMENT helpers
+# ────────────────────────────────────────────────────────────
+def _find_next(hay: str, needle: str, start: int) -> Tuple[int,int]:
+    k = hay.find(needle, start)
+    return (k, k+len(needle)) if k != -1 else (-1, -1)
+
+def _remove_nested(spans: List[Dict]) -> List[Dict]:
+    """
+    Throw away a span that is fully contained in (begin >=,
+    end <=) any longer span already kept.
+    """
+    keep: List[Dict] = []
+    # longest → shortest ensures outer spans are kept first
+    for sp in sorted(spans, key=lambda d: d['end']-d['start'], reverse=True):
+        if not any(sp['start'] >= k['start'] and sp['end'] <= k['end']
+                   for k in keep):
+            keep.append(sp)
+    # return them in document order
+    return sorted(keep, key=lambda d: d['start'])
+
+# ────────────────────────────────────────────────────────────
+# 3.  MAIN: align marked → original
+# ────────────────────────────────────────────────────────────
+def align_to_original(marked: str, original: str,
+                      longest_only: bool = True,
+                      all_occurrences: bool = True
+                      ) -> List[Dict]:
+    """
+    Locate every entity extracted from *marked* inside *original*.
+    Shorter occurrences that fall wholly inside a longer span
+    are automatically filtered out.
+    """
+    ents  = extract_entities(marked, longest_only)
+    out   : List[Dict] = []
+    cur   = 0
+
+    for text, _, _ in ents:
+        if all_occurrences:
+            for m in re.finditer(re.escape(text), original):
+                out.append({"text": text, "start": m.start(), "end": m.end()})
+        else:
+            b,e = _find_next(original, text, cur)
+            if b != -1:
+                out.append({"text": text, "start": b, "end": e})
+                cur = e
+
+    return _remove_nested(out)
 
 
 # --------------------------------------------------------------------
@@ -122,7 +205,7 @@ def build_prompt(sentence: str, tokenizer: AutoTokenizer) -> str:
 # --------------------------------------------------------------------
 if __name__ == "__main__":
     clearml_poc.clearml_init(
-        task_name="CascadeNER − Span Extraction Evaluation",
+        task_name="CascadeNER − Span Extraction Evaluation fewnerd",
         queue_name="a100_gpu",
         requirements=["transformers==4.46.2", "accelerate"],
     )
@@ -190,7 +273,7 @@ if __name__ == "__main__":
 
             for i, generated in enumerate(decoded):
                 # predicted spans & offsets
-                preds_pos = extract_entities_with_positions(b_sents[i], generated)
+                preds_pos = align_to_original(original=b_sents[i], marked=generated)
                 for p in preds_pos:
                     assert b_sents[i][p["start"] : p["end"]] == p["text"]
                 preds_txt = {p["text"].strip() for p in preds_pos if p["text"].strip()}

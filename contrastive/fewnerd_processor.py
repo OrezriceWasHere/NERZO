@@ -133,10 +133,10 @@ def choose_llm_representation(end, start, input_tokens, eos=None):
 
 
 __input_token_factory = {
-    "diff": lambda end, start, eos=None: (torch.tensor(end, dtype=torch.double) - torch.tensor(start, dtype=torch.double)),
-    "end": lambda end, start, eos=None: torch.tensor(end, dtype=torch.double),
-    "start_end_pair": lambda end, start,eos=None: torch.concat((torch.tensor(end,dtype=torch.double), torch.tensor(start, dtype=torch.double)), dim=-1),
-    "start_eos_pair": lambda end, start=None, eos=None: torch.concat((torch.tensor(end, dtype=torch.double), torch.tensor(eos, dtype=torch.double)), dim=-1
+    "diff": lambda end, start, eos=None: (torch.tensor(end, dtype=torch.float) - torch.tensor(start, dtype=torch.float)),
+    "end": lambda end, start, eos=None: torch.tensor(end, dtype=torch.float),
+    "start_end_pair": lambda end, start,eos=None: torch.concat((torch.tensor(end,dtype=torch.float), torch.tensor(start, dtype=torch.float)), dim=-1),
+    "start_eos_pair": lambda end, start=None, eos=None: torch.concat((torch.tensor(end, dtype=torch.float), torch.tensor(eos, dtype=torch.float)), dim=-1
         )
 
 }

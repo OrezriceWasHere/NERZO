@@ -20,3 +20,5 @@ datasets
 einops
 info-nce-pytorch
 faiss-cpu
+
+rank_bm25

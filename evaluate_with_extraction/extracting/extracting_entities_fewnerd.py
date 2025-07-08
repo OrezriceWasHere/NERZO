@@ -56,27 +56,44 @@ def gold_spans(
     current: List[str] = []
     cur_fine = 0
     prev_tag = 0
+    char_pos = 0
+    span_start = 0
+    span_end = 0
 
-    def flush():
+    def flush() -> None:
+        nonlocal current, cur_fine, span_start, span_end
         if current:
             spans.append(
                 {
                     "text": " ".join(current),
                     "fine_type": fine_id2lab[cur_fine] if fine_id2lab else cur_fine,
+                    "start": span_start,
+                    "end": span_end,
                 }
             )
+            current = []
 
-    for w, t, ft in zip(tokens, ner_tags, fine_tags):
-        if t:                              # inside entity
-            if t == prev_tag:
+    for idx, (w, t, ft) in enumerate(zip(tokens, ner_tags, fine_tags)):
+        token_start = char_pos
+        char_pos += len(w)
+        token_end = char_pos
+        if idx < len(tokens) - 1:
+            char_pos += 1
+
+        if t:  # inside entity
+            if t == prev_tag and current:
                 current.append(w)
+                span_end = token_end
             else:
                 flush()
-                current, cur_fine = [w], ft
+                current = [w]
+                cur_fine = ft
+                span_start = token_start
+                span_end = token_end
             prev_tag = t
-        else:                              # outside
+        else:  # outside
             flush()
-            current, prev_tag = [], 0
+            prev_tag = 0
     flush()
     return spans, {d["text"] for d in spans}
 

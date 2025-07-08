@@ -77,7 +77,14 @@ def gold_spans(document: dict) -> Tuple[List[Dict[str, str]], Set[str]]:
                     index_start = sum(len(word) for word in tokens[:word_index_start]) + word_index_start
                     index_end = index_start + len(" ".join(tokens[min(ref) : max(ref) + 1]))
                     if sentence[index_start:index_end].lower() == phrase.lower():
-                        spans.append({"text": phrase, "fine_type": entity_type})
+                        spans.append(
+                            {
+                                "text": phrase,
+                                "fine_type": entity_type,
+                                "start": index_start,
+                                "end": index_end,
+                            }
+                        )
     return spans, {d["text"] for d in spans}
 
 

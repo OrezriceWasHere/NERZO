@@ -5,7 +5,7 @@ from typing import Dict, List
 
 import pandas as pd
 from clearml import Dataset
-from rank_bm25 import BM25Okapi
+import bm25s
 
 import clearml_poc
 from contrastive import fewnerd_processor
@@ -24,7 +24,8 @@ class FewNerdRPrecisionBM25:
         print("Fine type to IDs mapping calculated.")
         print("Preparing BM25 corpus...")
         self.corpus_tokens, self.text_ids = self._prepare_corpus()
-        self.bm25 = BM25Okapi(self.corpus_tokens)
+        self.bm25 = bm25s.BM25()
+        self.bm25.index(self.corpus_tokens)
         print("BM25 corpus ready.")
         self.fine_types = list(self.fine_type_to_ids.keys())
 
@@ -47,20 +48,21 @@ class FewNerdRPrecisionBM25:
         return mapping
 
     def _prepare_corpus(self) -> tuple[List[List[str]], List[str]]:
-        corpus_tokens: List[List[str]] = []
+        corpus: List[str] = []
         text_ids: List[str] = []
         for tid, record in self.metadata.items():
-            tokens = record["sentence"].lower().split()
-            corpus_tokens.append(tokens)
+            corpus.append(record["sentence"])
             text_ids.append(tid)
+        corpus_tokens = bm25s.tokenize(corpus, stopwords="en")
         return corpus_tokens, text_ids
 
     def evaluate(self) -> pd.DataFrame:
         rows = {}
         for ft in self.fine_types:
-            query = self.type_to_name[ft.split("-")[-1]].lower().split()
-            scores = self.bm25.get_scores(query)
-            ranking = [tid for _, tid in sorted(zip(scores, self.text_ids), reverse=True)]
+            query_text = self.type_to_name[ft.split("-")[-1]]
+            query_tokens = bm25s.tokenize(query_text, stopwords="en")
+            results, _scores = self.bm25.retrieve(query_tokens=query_tokens, k=len(self.text_ids))
+            ranking = [self.text_ids[idx] for idx in results[0]]
             relevant = self.fine_type_to_ids[ft]
             r_size = len(relevant)
             retrieved = ranking[:r_size]

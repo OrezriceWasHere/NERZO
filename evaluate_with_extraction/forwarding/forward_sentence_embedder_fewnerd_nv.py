@@ -13,7 +13,7 @@ EMBEDDER_ID = "nvidia/NV-Embed-v2"
 
 DATASET_NAME = "span_extraction_results.json"
 DATASET_PROJECT = "fewnerd_pipeline"
-OUTPUT_FILE = "sentence_embeddings.json"
+OUTPUT_FILE = "sentence_embeddings_nv.json"
 
 
 def load_dataset() -> Dict[str, Dict]:
@@ -36,7 +36,7 @@ def upload_result(path: str) -> None:
 
 def main() -> None:
     clearml_poc.clearml_init(
-        task_name="FewNERD sentence embedder forward",
+        task_name="FewNERD sentence embedder forward NV",
         project_name=DATASET_PROJECT,
         requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
     )

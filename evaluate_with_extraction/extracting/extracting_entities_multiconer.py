@@ -10,20 +10,12 @@ Span-extraction evaluation on MultiCoNER v2 (English) with CascadeNER.
 * Logs running precision / recall / F1.
 * Dumps JSON and uploads to ClearML.
 """
-import gc
-import hashlib
-import json
 from typing import Dict, List, Set, Tuple
-
-import torch
-from clearml import Dataset
 from datasets import load_dataset
 from transformers import AutoTokenizer
-from tqdm import tqdm
 
-from .base_extractor import (
+from base_extractor import (
     LLMExtractionRunner,
-    build_prompt,
     extract_entities_with_positions,
 )
 
@@ -32,9 +24,8 @@ import clearml_poc
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 25          # GPU batch
-MAX_NEW    = 256          # generation cut-off
-N_EXAMPLES = 1000         # sample size (None ⇒ whole split)
+BATCH_SIZE = 50          # GPU batch
+MAX_NEW    = 4096          # generation cut-off
 
 REPO   = "CascadeNER/models_for_CascadeNER"
 SUBF   = "extractor"

@@ -2,10 +2,12 @@ import json
 import os
 from collections import defaultdict
 from typing import Dict, List
+import Stemmer  # optional: for stemming
 
 import pandas as pd
 from clearml import Dataset
 import bm25s
+from tqdm import tqdm
 
 import clearml_poc
 from contrastive import fewnerd_processor
@@ -53,21 +55,22 @@ class FewNerdRPrecisionBM25:
         for tid, record in self.metadata.items():
             corpus.append(record["sentence"])
             text_ids.append(tid)
-        corpus_tokens = bm25s.tokenize(corpus, stopwords="en")
+        corpus_tokens = bm25s.tokenize(corpus, stopwords="en", stemmer=stemmer)
         return corpus_tokens, text_ids
 
     def evaluate(self) -> pd.DataFrame:
         rows = {}
-        for ft in self.fine_types:
-            query_text = self.type_to_name[ft.split("-")[-1]]
-            query_tokens = bm25s.tokenize(query_text, stopwords="en")
-            results, _scores = self.bm25.retrieve(query_tokens=query_tokens, k=len(self.text_ids))
-            ranking = [self.text_ids[idx] for idx in results[0]]
-            relevant = self.fine_type_to_ids[ft]
+        for fine_type in tqdm(self.fine_types):
+            query_text = self.type_to_name[fine_type.split("-")[-1]]
+            query_tokens = bm25s.tokenize(query_text, stopwords="en", stemmer=stemmer, show_progress=False)
+            relevant = self.fine_type_to_ids[fine_type]
             r_size = len(relevant)
+            results, _scores = self.bm25.retrieve(query_tokens=query_tokens, k=r_size, show_progress=False)
+            ranking = [self.text_ids[idx] for idx in results[0]]
             retrieved = ranking[:r_size]
+            assert len(retrieved) == r_size
             r_prec = len(set(retrieved) & relevant) / r_size if r_size else 0.0
-            rows[ft] = {"R-precision": r_prec, "size": r_size}
+            rows[fine_type] = {"R-precision": r_prec, "size": r_size}
         df = pd.DataFrame.from_dict(rows, orient="index")
         clearml_poc.add_table(title="R-precision per fine type", series="r_precision", iteration=0, table=df)
         clearml_poc.add_table(title="average R-precision", series="r_precision", iteration=0, table=df.mean().to_frame())
@@ -81,4 +84,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    stemmer = Stemmer.Stemmer("english")
     main()

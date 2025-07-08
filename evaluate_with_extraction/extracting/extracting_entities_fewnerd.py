@@ -10,21 +10,13 @@ Span-extraction evaluation on Few-NERD with CascadeNER.
 • Logs running precision / recall / F1.
 • Dumps JSON and uploads to ClearML.
 """
-import gc
-import hashlib
-import json
 from typing import Dict, List, Set, Tuple
 
-import torch
-from clearml import Dataset
 from datasets import load_dataset
-from transformers import AutoTokenizer
-from tqdm import tqdm
 
-from .base_extractor import (
+from base_extractor import (
     LLMExtractionRunner,
-    align_to_original,
-    build_prompt,
+    align_to_original
 )
 
 import clearml_poc
@@ -32,7 +24,7 @@ import clearml_poc
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 200          # GPU batch
+BATCH_SIZE = 100          # GPU batch
 MAX_NEW    = 4096          # generation cut-off
 
 REPO   = "CascadeNER/models_for_CascadeNER"

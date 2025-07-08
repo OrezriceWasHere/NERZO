@@ -38,7 +38,7 @@ def main() -> None:
     clearml_poc.clearml_init(
         task_name="FewNERD sentence embedder forward",
         project_name=DATASET_PROJECT,
-        requirements=["transformers==4.46.2", "sentence_transformers", "accelerate"],
+        requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
     )
 
     embedder = SentenceEmbedder(llm_id=EMBEDDER_ID)

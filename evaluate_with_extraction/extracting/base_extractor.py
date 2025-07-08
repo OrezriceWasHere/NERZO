@@ -95,7 +95,7 @@ def _remove_nested(spans: List[Dict]) -> List[Dict]:
     return sorted(keep, key=lambda d: d['start'])
 
 
-def align_to_original(marked: str, original: str, longest_only: bool = True, all_occurrences: bool = True) -> List[Dict]:
+def align_to_original(original: str, marked: str, longest_only: bool = True, all_occurrences: bool = True) -> List[Dict]:
     ents = extract_entities(marked, longest_only)
     out: List[Dict] = []
     cur = 0

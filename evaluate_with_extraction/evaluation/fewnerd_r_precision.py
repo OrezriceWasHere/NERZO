@@ -31,12 +31,12 @@ class FewNerdRPrecision:
         print("LLM  initialized.")
         self.layer = FineTuneLLM.layer
         self.type_to_name = fewnerd_processor.type_to_name()
-        print("Loading embeddings...")
-        self.embeddings = self._load_embeddings()
-        print("Embeddings loaded.")
         print("Loading metadata...")
         self.metadata = self._load_metadata()
         print("Metadata loaded.")
+        print("Loading embeddings...")
+        self.embeddings = self._load_embeddings()
+        print("Embeddings loaded.")
         print("Calculating fine type to IDs mapping...")
         self.fine_type_to_ids = self._calc_fine_type_to_ids()
         print("Fine type to IDs mapping calculated.")
@@ -78,8 +78,6 @@ class FewNerdRPrecision:
         for tid, record in self.metadata.items():
             for g in record.get("gold", []):
                 fine_type = g["fine_type"]
-                if "other" in fine_type:
-                    fine_type = "other"
                 mapping[fine_type].add(tid)
         print("Mapping from fine types to IDs calculated.")
         return mapping
@@ -88,7 +86,7 @@ class FewNerdRPrecision:
         print("Embedding all fine types...")
         result = {}
         for fine_type in self.fine_type_to_ids.keys():
-            readable = self.type_to_name[fine_type.split("-")[1]]
+            readable = self.type_to_name[fine_type.split("-")[-1]]
             tokens = self.llm.tokenize(readable).to(self.device)
             with torch.no_grad():
                 hidden = self.llm.get_llm_at_layer(tokens, layer=self.layer)

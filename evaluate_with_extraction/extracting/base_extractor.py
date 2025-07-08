@@ -179,6 +179,8 @@ class LLMExtractionRunner:
                     preds_pos = self.extract_fn(b_sents[i], generated)
                     for p in preds_pos:
                         assert b_sents[i][p["start"] : p["end"]] == p["text"]
+                    for g in b_gold_l[i]:
+                        assert b_sents[i][g["start"] : g["end"]] == g["text"]
                     preds_txt = {p["text"].strip() for p in preds_pos if p["text"].strip()}
 
                     gold_total += len(b_gold_set[i])

@@ -41,26 +41,47 @@ def gold_spans(tokens: List[str], ner_tags: List[str]) -> Tuple[List[Dict[str, s
     spans: List[Dict[str, str]] = []
     current: List[str] = []
     cur_label: str | None = None
+    char_pos = 0
+    span_start = 0
+    span_end = 0
 
     def flush() -> None:
-        nonlocal current, cur_label
+        nonlocal current, cur_label, span_start, span_end
         if current:
-            spans.append({"text": " ".join(current), "fine_type": cur_label or ""})
+            spans.append(
+                {
+                    "text": " ".join(current),
+                    "fine_type": cur_label or "",
+                    "start": span_start,
+                    "end": span_end,
+                }
+            )
             current, cur_label = [], None
 
-    for w, tag in zip(tokens, ner_tags):
+    for idx, (w, tag) in enumerate(zip(tokens, ner_tags)):
+        token_start = char_pos
+        char_pos += len(w)
+        token_end = char_pos
+        if idx < len(tokens) - 1:
+            char_pos += 1
+
         if tag == "O":
             flush()
         elif tag.startswith("B-"):
             flush()
             current = [w]
             cur_label = tag[2:].lower()
+            span_start = token_start
+            span_end = token_end
         elif tag.startswith("I-") and current:
             current.append(w)
+            span_end = token_end
         else:
             flush()
             current = [w]
             cur_label = tag[2:].lower() if tag.startswith("I-") else tag.lower()
+            span_start = token_start
+            span_end = token_end
     flush()
     return spans, {d["text"] for d in spans}
 

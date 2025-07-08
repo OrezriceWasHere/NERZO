@@ -21,4 +21,4 @@ einops
 info-nce-pytorch
 faiss-cpu
 
-rank_bm25
+bm25s

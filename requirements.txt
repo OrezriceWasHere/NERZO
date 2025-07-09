@@ -20,5 +20,5 @@ datasets
 einops
 info-nce-pytorch
 faiss-cpu
-bm25s
-PyStemmer
+bm25sPyStemmer
+ijson

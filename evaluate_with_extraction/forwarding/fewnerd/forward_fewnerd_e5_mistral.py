@@ -6,7 +6,7 @@ from clearml import Dataset
 
 import clearml_poc
 from sentence_embedder import SentenceEmbedder
-from sentence_embedder_forwarder import forward_dataset, BATCH_SIZE
+from evaluate_with_extraction.forwarding.sentence_embedder_forwarder import forward_dataset, BATCH_SIZE
 
 # ID of the sentence embedder used for forwarding
 EMBEDDER_ID = "intfloat/e5-mistral-7b-instruct"

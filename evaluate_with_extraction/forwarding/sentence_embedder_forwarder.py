@@ -1,5 +1,7 @@
 from typing import Dict, List, Tuple
 
+from tqdm import tqdm
+
 from sentence_embedder import SentenceEmbedder
 
 BATCH_SIZE = 32
@@ -20,7 +22,9 @@ def forward_dataset(
     result: Dict[str, List[float]] = {}
     batch: List[Tuple[str, str]] = []
 
-    for text_id, record in records.items():
+    pbar = tqdm(records.items(), desc="Forwarding", unit="sent")
+
+    for text_id, record in pbar:
         batch.append((text_id, record["sentence"]))
         if len(batch) >= batch_size:
             sentences = [text for _, text in batch]

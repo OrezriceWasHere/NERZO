@@ -12,7 +12,7 @@ from llm_interface import LLMInterface
 from contrastive import fewnerd_processor
 from contrastive.args import Arguments, FineTuneLLM
 
-from .multi_vecor_r_precision import MultiVecorRPrecision
+from evaluate_with_extraction.evaluation.multi_vecor_r_precision import MultiVecorRPrecision
 
 
 def _load_dataset(name: str) -> str:
@@ -21,7 +21,7 @@ def _load_dataset(name: str) -> str:
 
 
 def load_embeddings() -> Dict[str, List[torch.Tensor]]:
-    path = _load_dataset("llm_mlp_embeddings_gold.json")
+    path = _load_dataset("llm_mlp_embeddings.json")
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     return {tid: [torch.tensor(e) for e in emb_list] for tid, emb_list in data.items()}
@@ -67,7 +67,7 @@ def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]], mlp_id: str) -> Dict
 
 
 def main() -> None:
-    clearml_poc.clearml_init(task_name="FewNERD R-Precision GOLD Evaluation", project_name="fewnerd_pipeline")
+    clearml_poc.clearml_init(task_name="FewNERD R-Precision Evaluation", project_name="fewnerd_pipeline")
     mlp_id = FineTuneLLM.mlp_head_model_id_from_clearml
     metadata = load_metadata()
     embeddings = load_embeddings()

@@ -64,13 +64,28 @@ class FewNerdRPrecisionBM25:
             query_text = self.type_to_name[fine_type.split("-")[-1]]
             query_tokens = bm25s.tokenize(query_text, stopwords="en", stemmer=stemmer, show_progress=False)
             relevant = self.fine_type_to_ids[fine_type]
-            r_size = len(relevant)
-            results, _scores = self.bm25.retrieve(query_tokens=query_tokens, k=r_size, show_progress=False)
+            count_type = len(relevant)
+            max_k = max(500, count_type)
+            results, _scores = self.bm25.retrieve(query_tokens=query_tokens, k=max_k, show_progress=False)
             ranking = [self.text_ids[idx] for idx in results[0]]
-            retrieved = ranking[:r_size]
-            assert len(retrieved) == r_size
-            r_prec = len(set(retrieved) & relevant) / r_size if r_size else 0.0
-            rows[fine_type] = {"R-precision": r_prec, "size": r_size}
+
+            row = {"size": count_type}
+            sizes = [10, 50, 100, 200, 500, count_type]
+            desc = ["10", "50", "100", "200", "500", "size"]
+            for s, d in zip(sizes, desc):
+                k = min(s, count_type)
+                retrieved_k = ranking[:k]
+                hits = len(set(retrieved_k) & relevant)
+                recall = hits / count_type if count_type else 0.0
+                precision = hits / k if k else 0.0
+                row[f"recall@{d}"] = recall
+                row[f"precision@{d}"] = precision
+                if d == "size":
+                    r_prec = precision
+
+            row["R-precision"] = r_prec
+            rows[fine_type] = row
+
         df = pd.DataFrame.from_dict(rows, orient="index")
         clearml_poc.add_table(title="R-precision per fine type", series="r_precision", iteration=0, table=df)
         clearml_poc.add_table(title="average R-precision", series="r_precision", iteration=0, table=df.mean().to_frame())

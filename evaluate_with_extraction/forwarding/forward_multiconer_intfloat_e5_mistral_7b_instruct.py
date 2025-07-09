@@ -9,11 +9,11 @@ from sentence_embedder import SentenceEmbedder
 from sentence_embedder_forwarder import forward_dataset, BATCH_SIZE
 
 # ID of the sentence embedder used for forwarding
-EMBEDDER_ID = "nvidia/NV-Embed-v2"
+EMBEDDER_ID = "intfloat/e5-mistral-7b-instruct"
 
 DATASET_NAME = "span_extraction_results.json"
-DATASET_PROJECT = "fewnerd_pipeline"
-OUTPUT_FILE = "sentence_embeddings.json"
+DATASET_PROJECT = "multiconer_pipeline"
+OUTPUT_FILE = "sentence_embeddings_e5.json"
 
 
 def load_dataset() -> Dict[str, Dict]:
@@ -36,9 +36,9 @@ def upload_result(path: str) -> None:
 
 def main() -> None:
     clearml_poc.clearml_init(
-        task_name="FewNERD sentence embedder forward",
+        task_name="MultiCoNER sentence embedder forward E5",
         project_name=DATASET_PROJECT,
-        requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
+        requirements=["transformers==4.46.2", "sentence_transformers", "accelerate"],
     )
 
     embedder = SentenceEmbedder(llm_id=EMBEDDER_ID)

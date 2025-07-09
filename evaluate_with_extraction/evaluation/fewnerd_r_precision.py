@@ -139,17 +139,33 @@ class FewNerdRPrecision:
         D, I = self._search_all()
         for idx_ft, ft in enumerate(self.fine_types):
             relevant = self.fine_type_to_ids[ft]
-            retrieved = []
+            ranking = []
             seen = set()
+            max_k = max(500, len(relevant))
             for idx in I[idx_ft]:
                 tid = self.index_to_tid[idx]
                 if tid not in seen:
-                    retrieved.append(tid)
+                    ranking.append(tid)
                     seen.add(tid)
-                    if len(retrieved) == len(relevant):
+                    if len(ranking) >= max_k:
                         break
-            r_prec = len(set(retrieved) & relevant) / len(relevant) if relevant else 0.0
-            rows[ft] = {"R-precision": r_prec, "size": len(relevant)}
+
+            row = {"size": len(relevant)}
+            sizes = [10, 50, 100, 200, 500, len(relevant)]
+            desc = ["10", "50", "100", "200", "500", "size"]
+            for s, d in zip(sizes, desc):
+                k = min(s, len(relevant))
+                retrieved_k = ranking[:k]
+                hits = len(set(retrieved_k) & relevant)
+                recall = hits / len(relevant) if len(relevant) else 0.0
+                precision = hits / k if k else 0.0
+                row[f"recall@{d}"] = recall
+                row[f"precision@{d}"] = precision
+                if d == "size":
+                    r_prec = precision
+            row["R-precision"] = r_prec
+            rows[ft] = row
+
         df = pd.DataFrame.from_dict(rows, orient="index")
         print("Evaluation finished. Logging results to ClearML...")
         clearml_poc.add_table(title="R-precision per fine type", series="r_precision", iteration=0, table=df)

@@ -12,7 +12,7 @@ from contrastive.args import Arguments, FineTuneLLM
 from contrastive import fewnerd_processor
 import clearml_helper
 
-BATCH_SIZE = 10
+BATCH_SIZE = 50
 MAX_BATCHES = 40  # ~1000 records for debugging
 
 

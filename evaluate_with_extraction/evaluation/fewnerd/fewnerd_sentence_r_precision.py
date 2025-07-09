@@ -9,6 +9,7 @@ import pandas as pd
 import torch
 from clearml import Dataset
 import faiss
+from tqdm import tqdm
 
 import clearml_poc
 from contrastive import fewnerd_processor
@@ -44,7 +45,9 @@ class FewNerdSentenceRPrecision:
         path = self._load_dataset("sentence_embeddings_nv.json")
         result: Dict[str, torch.Tensor] = {}
         with open(path, "r", encoding="utf-8") as fh:
-            for tid, emb in ijson.kvitems(fh, ''):
+            for tid, emb in tqdm(
+                ijson.kvitems(fh, ''), desc="Loading embeddings"
+            ):
                 result[tid] = torch.tensor(emb)
         return result
 

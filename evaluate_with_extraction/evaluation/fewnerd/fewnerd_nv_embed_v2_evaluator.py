@@ -13,6 +13,8 @@ from contrastive import fewnerd_processor
 from sentence_embedder import SentenceEmbedder
 from evaluate_with_extraction.evaluation.single_vector_r_precision import SingleVectorRPrecision
 
+SENTENCE_EMBEDDER_ID = "nvidia/NV-Embed-v2"
+
 
 def _load_dataset(name: str) -> str:
     ds = Dataset.get(dataset_name=name, dataset_project="fewnerd_pipeline")
@@ -43,7 +45,7 @@ def calc_fine_type_to_ids(metadata: Dict[str, Dict]) -> Dict[str, Set[str]]:
 
 
 def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]]) -> Dict[str, torch.Tensor]:
-    embedder = SentenceEmbedder(llm_id="nvidia/NV-Embed-v2")
+    embedder = SentenceEmbedder(llm_id=SENTENCE_EMBEDDER_ID)
     type_to_name = fewnerd_processor.type_to_name()
     result = {}
     for fine_type in fine_type_to_ids.keys():

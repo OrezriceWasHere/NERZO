@@ -67,8 +67,8 @@ def process_batch(
             )
             result.setdefault(text_id, {}).setdefault("llama_3_1_17_v_entity_end", []).append(rep.tolist())
             result[text_id].setdefault("llama_3_1_17_v_entity_eos", []).append(eos_vec.cpu().tolist())
-            llm_reprs.append(rep)
-            eos_vecs.append(eos_vec)
+            llm_reprs.append(rep.to(device))
+            eos_vecs.append(eos_vec.to(device))
             owners.append(text_id)
 
     if llm_reprs:

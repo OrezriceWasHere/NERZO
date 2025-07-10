@@ -30,7 +30,7 @@ def load_embeddings() -> Dict[str, List[torch.Tensor]]:
         for tid, emb_list in tqdm(
             ijson.kvitems(fh, ""), desc="Loading embeddings"
         ):
-            result[tid] = [torch.tensor(e) for e in emb_list]
+            result[tid] = [torch.tensor(e, dtype=torch.float) for e in emb_list]
     return result
 
 
@@ -74,7 +74,7 @@ def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]], mlp_id: str) -> Dict
 
 
 def main() -> None:
-    clearml_poc.clearml_init(task_name="FewNERD R-Precision Evaluation", project_name="fewnerd_pipeline")
+    clearml_poc.clearml_init(task_name="FewNERD R-Precision Evaluation prediction", project_name="fewnerd_pipeline")
     mlp_id = FineTuneLLM.mlp_head_model_id_from_clearml
     metadata = load_metadata()
     embeddings = load_embeddings()

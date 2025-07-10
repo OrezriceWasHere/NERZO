@@ -30,7 +30,7 @@ def load_embeddings() -> Dict[str, List[torch.Tensor]]:
         for tid, emb_list in tqdm(
             ijson.kvitems(fh, ""), desc="Loading embeddings"
         ):
-            result[tid] = [torch.tensor(e) for e in emb_list]
+            result[tid] = [torch.tensor(e, dtype=torch.float) for e in emb_list]
     return result
 
 

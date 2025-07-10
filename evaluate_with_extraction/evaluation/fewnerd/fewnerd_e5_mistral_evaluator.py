@@ -22,11 +22,11 @@ def _load_dataset(name: str) -> str:
 
 
 def load_embeddings() -> Dict[str, torch.Tensor]:
-    path = _load_dataset("sentence_embeddings_nv.json")
+    path = _load_dataset("sentence_embeddings_e5.json")
     result: Dict[str, torch.Tensor] = {}
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, 'rb') as fh:
         for tid, emb in tqdm(ijson.kvitems(fh, ""), desc="Loading embeddings"):
-            result[tid] = torch.tensor(emb)
+            result[tid] = torch.tensor(emb, dtype=torch.float)
     return result
 
 
@@ -57,18 +57,18 @@ def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]]) -> Dict[str, torch.T
 
 def main() -> None:
     clearml_poc.clearml_init(
-        task_name="FewNERD Sentence R-Precision Evaluation",
+        task_name="FewNERD Sentence R-Precision Evaluation " + SENTENCE_EMBEDDER_ID,
         project_name="fewnerd_pipeline",
         requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
     )
     metadata = load_metadata()
-    embeddings = load_embeddings()
     ft_to_ids = calc_fine_type_to_ids(metadata)
     ft_embeds = embed_fine_types(ft_to_ids)
+    embeddings = load_embeddings()
     evaluator = SingleVectorRPrecision(
         embeddings=embeddings,
         fine_type_embeddings=ft_embeds,
-        fine_type_to_ids=ft_to_ids,
+        fine_type_to_ids=ft_to_ids
     )
     evaluator.evaluate()
 

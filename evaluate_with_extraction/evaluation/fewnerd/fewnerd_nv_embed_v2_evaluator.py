@@ -26,7 +26,7 @@ def load_embeddings() -> Dict[str, torch.Tensor]:
     result: Dict[str, torch.Tensor] = {}
     with open(path, "r", encoding="utf-8") as fh:
         for tid, emb in tqdm(ijson.kvitems(fh, ""), desc="Loading embeddings"):
-            result[tid] = torch.tensor(emb)
+            result[tid] = torch.tensor(emb, dtype=torch.float)
     return result
 
 
@@ -57,7 +57,7 @@ def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]]) -> Dict[str, torch.T
 
 def main() -> None:
     clearml_poc.clearml_init(
-        task_name="FewNERD Sentence R-Precision Evaluation",
+        task_name="FewNERD Sentence R-Precision Evaluation " + SENTENCE_EMBEDDER_ID,
         project_name="fewnerd_pipeline",
         requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
     )

@@ -67,17 +67,8 @@ class SingleVectorRPrecision:
         rows = {}
         D, I = self._search_all()
         for idx_ft, ft in enumerate(self.fine_types):
-            relevant = self.fine_type_to_ids.get(ft, set())
-            ranking = []
-            seen = set()
-            max_k = max(500, len(relevant))
-            for idx in I[idx_ft]:
-                tid = self.index_to_tid[idx]
-                if tid not in seen:
-                    ranking.append(tid)
-                    seen.add(tid)
-                    if len(ranking) >= max_k:
-                        break
+            relevant = self.fine_type_to_ids[ft]
+            ranking = [self.index_to_tid[i] for i in I[idx_ft][:len(relevant)]]
 
             row = {"size": len(relevant)}
             sizes = [10, 50, 100, 200, 500, len(relevant)]

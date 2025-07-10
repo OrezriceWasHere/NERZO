@@ -15,6 +15,13 @@ import clearml_poc
 from contrastive import fewnerd_processor
 from sentence_embedder import SentenceEmbedder
 
+OTHER_MULTICONER = {"OtherLOC", "OtherPER", "OtherPROD"}
+
+
+def _is_other(fine_type: str) -> bool:
+    """Return True if the fine type represents an "other" category."""
+    return fine_type.endswith("-other") or fine_type in OTHER_MULTICONER
+
 
 class FewNerdSentenceRPrecision:
     """Evaluate FewNERD retrieval using NV-Embed-v2 sentence embeddings."""
@@ -124,8 +131,27 @@ class FewNerdSentenceRPrecision:
             rows[ft] = row
 
         df = pd.DataFrame.from_dict(rows, orient="index")
-        clearml_poc.add_table(title="R-precision per fine type", series="r_precision", iteration=0, table=df)
-        clearml_poc.add_table(title="average R-precision", series="r_precision", iteration=0, table=df.mean().to_frame())
+        clearml_poc.add_table(
+            title="R-precision per fine type",
+            series="r_precision",
+            iteration=0,
+            table=df,
+        )
+        clearml_poc.add_table(
+            title="average R-precision",
+            series="r_precision",
+            iteration=0,
+            table=df.mean().to_frame(),
+        )
+
+        non_other = df[~df.index.to_series().apply(_is_other)]
+        if not non_other.empty:
+            clearml_poc.add_table(
+                title="average non-other R-precision",
+                series="r_precision",
+                iteration=0,
+                table=non_other.mean().to_frame(),
+            )
         return df
 
 

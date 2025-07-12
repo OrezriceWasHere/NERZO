@@ -2,6 +2,8 @@ import os
 import json
 from typing import Dict
 
+import torch
+
 from clearml import Dataset
 
 import clearml_poc
@@ -13,7 +15,7 @@ EMBEDDER_ID = "intfloat/e5-mistral-7b-instruct"
 
 DATASET_NAME = "span_extraction_results.json"
 DATASET_PROJECT = "fewnerd_pipeline"
-OUTPUT_FILE = "sentence_embeddings_e5.json"
+OUTPUT_FILE = "sentence_embeddings_e5.pth"
 
 
 def load_dataset() -> Dict[str, Dict]:
@@ -46,8 +48,7 @@ def main() -> None:
     records = load_dataset()
     result = forward_dataset(records, embedder, batch_size=BATCH_SIZE)
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as fh:
-        json.dump(result, fh)
+    torch.save(result, OUTPUT_FILE)
 
     upload_result(OUTPUT_FILE)
 

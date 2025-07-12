@@ -3,7 +3,6 @@ import os
 from collections import defaultdict
 from typing import Dict, List, Set
 
-import ijson
 from tqdm import tqdm
 
 import torch
@@ -24,13 +23,11 @@ def _load_dataset(name: str) -> str:
 
 
 def load_embeddings() -> Dict[str, List[torch.Tensor]]:
-    path = _load_dataset("llm_mlp_embeddings.json")
+    path = _load_dataset("llm_mlp_embeddings.pth")
+    data = torch.load(path)
     result: Dict[str, List[torch.Tensor]] = {}
-    with open(path, "r", encoding="utf-8") as fh:
-        for tid, emb_list in tqdm(
-            ijson.kvitems(fh, ""), desc="Loading embeddings"
-        ):
-            result[tid] = [torch.tensor(e, dtype=torch.float) for e in emb_list]
+    for tid, emb_list in tqdm(data.items(), desc="Loading embeddings"):
+        result[tid] = [torch.tensor(e, dtype=torch.float) for e in emb_list]
     return result
 
 

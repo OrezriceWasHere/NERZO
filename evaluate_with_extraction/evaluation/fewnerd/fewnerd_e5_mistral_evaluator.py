@@ -3,7 +3,6 @@ import os
 from collections import defaultdict
 from typing import Dict, Set
 
-import ijson
 import torch
 from clearml import Dataset
 from tqdm import tqdm
@@ -22,11 +21,11 @@ def _load_dataset(name: str) -> str:
 
 
 def load_embeddings() -> Dict[str, torch.Tensor]:
-    path = _load_dataset("sentence_embeddings_e5.json")
+    path = _load_dataset("sentence_embeddings_e5.pth")
+    data = torch.load(path)
     result: Dict[str, torch.Tensor] = {}
-    with open(path, 'rb') as fh:
-        for tid, emb in tqdm(ijson.kvitems(fh, ""), desc="Loading embeddings"):
-            result[tid] = torch.tensor(emb, dtype=torch.float)
+    for tid, emb in tqdm(data.items(), desc="Loading embeddings"):
+        result[tid] = torch.tensor(emb, dtype=torch.float)
     return result
 
 

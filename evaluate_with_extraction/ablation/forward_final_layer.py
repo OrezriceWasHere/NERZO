@@ -94,9 +94,8 @@ def main() -> None:
             else:
                 result[k] = v
 
-    output_path = "final_layer_embeddings.json"
-    with open(output_path, "w", encoding="utf-8") as fh:
-        json.dump(result, fh)
+    output_path = "final_layer_embeddings.pt"
+    torch.save(result, output_path)
 
     cl_ds = Dataset.create(dataset_name=output_path, dataset_project="fewnerd_pipeline")
     cl_ds.add_files(path=output_path)

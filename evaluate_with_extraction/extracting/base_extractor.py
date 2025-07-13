@@ -3,6 +3,7 @@ import gc
 import hashlib
 import json
 import re
+import uuid
 from typing import Callable, Dict, List, Sequence, Tuple
 
 import torch
@@ -174,8 +175,9 @@ class LLMExtractionRunner:
                 decoded = self.tokenizer.batch_decode(
                     [seq[prompt_len[i] :] for i, seq in enumerate(outs)], skip_special_tokens=True
                 )
+                sentence_ids = [str(uuid.uuid4()) for _ in range(len(b_prompts))]
 
-                for i, generated in enumerate(decoded):
+                for i, (generated, sentence_id) in enumerate(zip(decoded, sentence_ids)):
                     preds_pos = self.extract_fn(b_sents[i], generated)
                     for p in preds_pos:
                         assert b_sents[i][p["start"] : p["end"]] == p["text"]
@@ -187,8 +189,7 @@ class LLMExtractionRunner:
                     pred_total += len(preds_txt)
                     correct += len(b_gold_set[i] & preds_txt)
 
-                    sent_hash = hashlib.sha1(b_sents[i].encode()).hexdigest()
-                    results[sent_hash] = {
+                    results[sentence_id] = {
                         "id": self.ids[start + i],
                         "sentence": b_sents[i],
                         "gold": b_gold_l[i],

@@ -24,7 +24,7 @@ import clearml_poc
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 50          # GPU batch
+BATCH_SIZE = 100          # GPU batch
 MAX_NEW    = 4096          # generation cut-off
 
 REPO   = "CascadeNER/models_for_CascadeNER"

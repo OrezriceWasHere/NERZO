@@ -24,9 +24,8 @@ def _load_dataset(name: str) -> str:
 
 
 def load_embeddings() -> Dict[str, Dict[str, List[torch.Tensor]]]:
-    path = _load_dataset("ablation_embeddings.json")
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
+    path = _load_dataset("ablation_embeddings.pt")
+    data = torch.load(path)
     result: Dict[str, Dict[str, List[torch.Tensor]]] = {}
     for tid, embs in data.items():
         for key, lst in embs.items():

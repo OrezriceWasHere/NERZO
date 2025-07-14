@@ -63,7 +63,7 @@ class SingleVectorRPrecision:
         D, I = self.index.search(queries, 4 * len(self.index_to_tid))
         return D, I
 
-    def evaluate(self) -> pd.DataFrame:
+    def evaluate(self, description: str = "") -> pd.DataFrame:
         rows = {}
         D, I = self._search_all()
         for idx_ft, ft in enumerate(self.fine_types):
@@ -87,15 +87,16 @@ class SingleVectorRPrecision:
             rows[ft] = row
 
         df = pd.DataFrame.from_dict(rows, orient="index")
+        suffix = f" ({description})" if description else ""
         clearml_poc.add_table(
-            title="R-precision per fine type",
+            title=f"R-precision per fine type{suffix}",
             series="r_precision",
             iteration=0,
             table=df,
         )
 
         clearml_poc.add_table(
-            title="average R-precision",
+            title=f"average R-precision{suffix}",
             series="r_precision",
             iteration=0,
             table=df.mean().to_frame(),
@@ -104,7 +105,7 @@ class SingleVectorRPrecision:
         non_other = df[~df.index.to_series().apply(_is_other)]
         if not non_other.empty:
             clearml_poc.add_table(
-                title="average non-other R-precision",
+                title=f"average non-other R-precision{suffix}",
                 series="r_precision",
                 iteration=0,
                 table=non_other.mean().to_frame(),

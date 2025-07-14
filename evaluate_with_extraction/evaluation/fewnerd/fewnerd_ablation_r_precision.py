@@ -100,7 +100,7 @@ def main() -> None:
             fine_type_to_ids=ft_to_ids,
         )
         clearml_poc.add_text(key)
-        evaluator.evaluate()
+        evaluator.evaluate(description=key)
 
 
 if __name__ == "__main__":

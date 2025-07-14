@@ -45,8 +45,8 @@ def calc_fine_type_to_ids(metadata: Dict[str, Dict]) -> Dict[str, Set[str]]:
 
 def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]]) -> Dict[str, torch.Tensor]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    llm = LLMInterface(llm_id=FineTuneLLM.llm_id, max_llm_layer=FineTuneLLM.max_llm_layer)
-    layer = FineTuneLLM.layer
+    layer = "model"
+    llm = LLMInterface(llm_id=FineTuneLLM.llm_id, layer=layer)
     args = Arguments()
     type_to_name = fewnerd_processor.type_to_name()
     result = {}

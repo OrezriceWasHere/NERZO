@@ -130,7 +130,7 @@ class NV_Embed_V2(AbstractSentenceEmbedder):
         passage_embeddings = self.model.encode(self.add_eos(passages),
                                                convert_to_numpy=False,
                                                convert_to_tensor=True,
-                                               batch_size=len(passage), normalize_embeddings=True).half()
+                                               batch_size=len(passages), normalize_embeddings=True).half()
         return passage_embeddings
 
     def forward_query(self, query):
@@ -138,7 +138,7 @@ class NV_Embed_V2(AbstractSentenceEmbedder):
         query_embeddings = self.model.encode(
             self.add_eos(queries), convert_to_numpy=False,
             convert_to_tensor=True,
-            batch_size=len(query), prompt=self.query_prefix, normalize_embeddings=True
+            batch_size=len(queries), prompt=self.query_prefix, normalize_embeddings=True
             ).half()
         return query_embeddings
 

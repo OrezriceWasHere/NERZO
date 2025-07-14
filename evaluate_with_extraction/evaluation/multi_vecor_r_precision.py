@@ -5,12 +5,12 @@ from typing import Dict, Iterable, Sequence, Set, Union
 
 import clearml_poc
 
-OTHER_MULTICONER = {"OtherLOC", "OtherPER", "OtherPROD"}
+OTHER_MULTICONER = {"otherloc", "otherper", "otherprod"}
 
 
 def _is_other(fine_type: str) -> bool:
     """Return True if the fine type represents an "other" category."""
-    return fine_type.endswith("-other") or fine_type in OTHER_MULTICONER
+    return fine_type.endswith("-other") or fine_type.lower() in OTHER_MULTICONER
 
 Vector = Union[Sequence[float], np.ndarray]
 

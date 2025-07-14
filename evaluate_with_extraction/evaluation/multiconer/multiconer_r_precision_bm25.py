@@ -12,7 +12,7 @@ from tqdm import tqdm
 import clearml_poc
 from evaluate_with_extraction.evaluation.multiconer.utils import type_to_name
 
-OTHER_MULTICONER = {"OtherLOC", "OtherPER", "OtherPROD"}
+OTHER_MULTICONER = {"otherloc", "otherper", "otherprod"}
 DATASET_PROJECT = "multiconer_pipeline"
 
 

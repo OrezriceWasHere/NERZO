@@ -68,21 +68,18 @@ def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]], embedding_key: str) 
         eos_idx = llm.tokens_count(text_with_eos) - 1
         eos_vec = hidden[0, eos_idx]
         end_idx = llm.tokens_count(readable) - 1
-        start_vec = hidden[0, 0]
         end_vec = hidden[0, end_idx]
-        rep = fewnerd_processor.choose_llm_representation(
-            end_vec.cpu().tolist(),
-            start_vec.cpu().tolist(),
-            input_tokens=args.input_tokens,
-        )
+        # mlp_blah blah blah
+        # llama_3_1_17_v_entity_eos
+        # llama_3_1_17_v_entity_end
         if embedding_key.startswith("mlp_"):
-            inp = torch.cat((rep.to(device), eos_vec), dim=-1)
+            concat = torch.cat((end_vec, eos_vec), dim=-1)
             with torch.no_grad():
-                emb = mlp(inp).cpu()
+                emb = mlp(concat).cpu()
         elif embedding_key.endswith("_eos"):
             emb = eos_vec.cpu()
         else:
-            emb = rep.cpu()
+            emb = end_vec.cpu()
         result[fine_type] = emb
     return result
 

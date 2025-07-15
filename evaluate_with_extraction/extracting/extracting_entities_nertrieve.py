@@ -12,24 +12,15 @@ Span-extraction evaluation on the NERtrieve dataset with CascadeNER.
 * Logs running precision / recall / F1.
 * Dumps JSON and uploads to ClearML.
 """
-
-import bz2
-import gc
-import hashlib
 import json
 import os
-import random
-from typing import Dict, Iterable, List, Set, Tuple
-
-import requests
-import torch
+from typing import Dict
 from clearml import Dataset
 from transformers import AutoTokenizer
 from tqdm import tqdm
 
-from .base_extractor import (
+from base_extractor import (
     LLMExtractionRunner,
-    build_prompt,
     extract_entities_with_positions,
 )
 
@@ -38,54 +29,72 @@ import clearml_poc
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
-BATCH_SIZE = 1  # GPU batch
-MAX_NEW = 256     # generation cut-off
-N_EXAMPLES = 100  # number of sentences to evaluate
+BATCH_SIZE = 100  # GPU batch
+MAX_NEW = 4096     # generation cut-off
 
 REPO = "CascadeNER/models_for_CascadeNER"
 SUBF = "extractor"
 
-# URLs for the supervised NERtrieve dataset
-DATA_URLS = [
-    (
-        "https://storage.googleapis.com/neretrieve_dataset/supervised_ner/NERetrive_sup_test.jsonl.bz2",
-        "nertrieve_sup_test.jsonl.bz2",
-    ),
-]
+DATASET_NAME = "neretrieve_test_ir_base"
+DATASET_PROJECT = "neretrieve_pipeline"
+
+ENTITIES_FILE = "neretrieve_downsampled_350k.jsonl"
+CORPUS_FILES = "NERetrive_IR_corpus.jsonl"
+
+def download_jsonl_file(file) -> list[Dict]:
+    """Download the extraction dataset from ClearML and return it."""
+    ds = Dataset.get(dataset_name=DATASET_NAME, dataset_project=DATASET_PROJECT)
+    path = os.path.join(ds.get_local_copy(), file)
+    result = []
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in tqdm(fh, desc=f"Loading {file}"):
+            result.append(json.loads(line))
+
+    return result
+
+def clean_word(text: str) -> str:
+    remove_chars = [",", ".", "(", ")", ":", ";", "'", "'s"]
+    for char in remove_chars:
+        text = text.replace(char, "")
+    return text.lower()
+
+def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
+    corpus = {record["id"]: record for record in corpus_file}
+    entities_file = {record["id"]: record for record in entities_file}
+
+    prased_dataset = {}
+    mismatch_counter = 0
+
+    for key in tqdm(entities_file.keys(), desc="building dataset"):
+        sentence = corpus[key]["content"]
+        split = sentence.split(" ")
+        gold = []
+        for fine_type, span in entities_file[key]["tagged_entities"].items():
+            for instances in span.values():
+                for text, spans in instances.items():
+                    for location in spans:
+                        if not location:
+                            continue
+                        start_word = min(location)
+                        end_word = max(location)
+                        start_index = len(" ".join(split[0:start_word])) + 1 if start_word > 0 else 0
+                        end_index = len(" ".join(split[0:end_word + 1]))
+                        gold.append({
+                            "text": text,
+                            "fine_type": fine_type,
+                            "start": start_index,
+                            "end": end_index,
+                        })
 
 
+        prased_dataset[key] = {
+            "text": corpus[key]["content"],
+            "gold": gold,
+        }
 
+    print("Mismatch Counter:", mismatch_counter)
+    return prased_dataset
 
-
-# --------------------------------------------------------------------
-# Helper ② – gold-span reconstruction
-# --------------------------------------------------------------------
-def gold_spans(document: dict) -> Tuple[List[Dict[str, str]], Set[str]]:
-    """Reconstruct gold spans from a NERtrieve document."""
-    spans: List[Dict[str, str]] = []
-    sentence: str = document["content"]
-    tokens: List[str] = document.get("document_token_sequence", sentence.split())
-    tagging = document.get("tagged_entities", {})
-
-    for entity_type, entity_dict in tagging.items():
-        for entity_id, phrase_dict in entity_dict.items():
-            for phrase, references in phrase_dict.items():
-                for ref in references:
-                    if not ref:
-                        continue
-                    word_index_start = min(ref)
-                    index_start = sum(len(word) for word in tokens[:word_index_start]) + word_index_start
-                    index_end = index_start + len(" ".join(tokens[min(ref) : max(ref) + 1]))
-                    if sentence[index_start:index_end].lower() == phrase.lower():
-                        spans.append(
-                            {
-                                "text": phrase,
-                                "fine_type": entity_type,
-                                "start": index_start,
-                                "end": index_end,
-                            }
-                        )
-    return spans, {d["text"] for d in spans}
 
 
 # --------------------------------------------------------------------
@@ -99,24 +108,6 @@ def build_prompt(sentence: str, tokenizer: AutoTokenizer) -> str:
     return tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
 
 
-# --------------------------------------------------------------------
-# Dataset utilities
-# --------------------------------------------------------------------
-def download_dataset(url: str, dst: str) -> str:
-    if not os.path.exists(dst):
-        resp = requests.get(url, stream=True)
-        resp.raise_for_status()
-        with open(dst, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=8192):
-                fh.write(chunk)
-    return dst
-
-
-def iter_documents(path: str) -> Iterable[dict]:
-    opener = bz2.open if path.endswith(".bz2") else open
-    with opener(path, "rt", encoding="utf-8") as fh:
-        for line in fh:
-            yield json.loads(line)
 
 
 # --------------------------------------------------------------------
@@ -127,23 +118,18 @@ if __name__ == "__main__":
         task_name="CascadeNER − NERtrieve Extraction", queue_name="a100_gpu", requirements=["transformers==4.46.2", "accelerate"],
     )
 
-    docs = []
-    for url, fname in DATA_URLS:
-        local = download_dataset(url, fname)
-        docs.extend(list(iter_documents(local)))
 
-    if N_EXAMPLES:
-        rng = random.Random(0)
-        docs = rng.sample(docs, min(N_EXAMPLES, len(docs)))
-
+    corpus_file = download_jsonl_file(CORPUS_FILES)
+    entities_file = download_jsonl_file(ENTITIES_FILE)
+    dataset = parse_base_dataset(corpus_file, entities_file)
     sentences, gold_lists, gold_sets, ids = [], [], [], []
-    for ex in docs:
-        sent = ex.get("content", " ".join(ex.get("document_token_sequence", [])))
-        g_list, g_set = gold_spans(ex)
-        sentences.append(sent)
-        gold_lists.append(g_list)
-        gold_sets.append(g_set)
-        ids.append(ex.get("id"))
+    # for ex in docs:
+    #     sent = ex.get("content", " ".join(ex.get("document_token_sequence", [])))
+    #     g_list, g_set = gold_spans(ex)
+    #     sentences.append(sent)
+    #     gold_lists.append(g_list)
+    #     gold_sets.append(g_set)
+    #     ids.append(ex.get("id"))
 
     runner = LLMExtractionRunner(
         sentences=sentences,

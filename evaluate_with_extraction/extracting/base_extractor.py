@@ -158,6 +158,8 @@ class LLMExtractionRunner:
     def evaluate(self) -> None:
         prompts = [build_prompt(s, self.tokenizer) for s in self.sentences]
         gold_total = pred_total = correct = 0
+        # default metric values so prints work even if no examples are processed
+        prec = rec = f1 = 0.0
         results: Dict[str, Dict] = {}
         pbar = tqdm(range(0, len(prompts), self.batch_size))
 
@@ -203,10 +205,17 @@ class LLMExtractionRunner:
                 prec = correct / pred_total if pred_total else 0
                 rec = correct / gold_total if gold_total else 0
                 f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0
-                pbar.set_description(f"Prec {prec:.2f}  Rec {rec:.2f}  F1 {f1:.2f}")
+                pbar.set_description(
+                    f"Prec {prec:.2f}  Rec {rec:.2f}  F1 {f1:.2f}"
+                )
 
                 torch.cuda.empty_cache()
                 gc.collect()
+
+        # compute final metrics after all batches
+        prec = correct / pred_total if pred_total else 0
+        rec = correct / gold_total if gold_total else 0
+        f1 = 2 * prec * rec / (prec + rec) if prec + rec else 0
 
         print("\n— Final results —")
         print(f"Precision: {prec:.3f}")

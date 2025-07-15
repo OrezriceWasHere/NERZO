@@ -12,6 +12,7 @@ Span-extraction evaluation on the NERtrieve dataset with CascadeNER.
 * Logs running precision / recall / F1.
 * Dumps JSON and uploads to ClearML.
 """
+
 import json
 import os
 from typing import Dict
@@ -30,7 +31,7 @@ import clearml_poc
 # Settings
 # --------------------------------------------------------------------
 BATCH_SIZE = 100  # GPU batch
-MAX_NEW = 4096     # generation cut-off
+MAX_NEW = 4096  # generation cut-off
 
 REPO = "CascadeNER/models_for_CascadeNER"
 SUBF = "extractor"
@@ -40,6 +41,7 @@ DATASET_PROJECT = "neretrieve_pipeline"
 
 ENTITIES_FILE = "neretrieve_downsampled_350k.jsonl"
 CORPUS_FILES = "NERetrive_IR_corpus.jsonl"
+
 
 def download_jsonl_file(file) -> list[Dict]:
     """Download the extraction dataset from ClearML and return it."""
@@ -52,11 +54,13 @@ def download_jsonl_file(file) -> list[Dict]:
 
     return result
 
+
 def clean_word(text: str) -> str:
     remove_chars = [",", ".", "(", ")", ":", ";", "'", "'s"]
     for char in remove_chars:
         text = text.replace(char, "")
     return text.lower()
+
 
 def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
     corpus = {record["id"]: record for record in corpus_file}
@@ -77,15 +81,20 @@ def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
                             continue
                         start_word = min(location)
                         end_word = max(location)
-                        start_index = len(" ".join(split[0:start_word])) + 1 if start_word > 0 else 0
-                        end_index = len(" ".join(split[0:end_word + 1]))
-                        gold.append({
-                            "text": text,
-                            "fine_type": fine_type,
-                            "start": start_index,
-                            "end": end_index,
-                        })
-
+                        start_index = (
+                            len(" ".join(split[0:start_word])) + 1
+                            if start_word > 0
+                            else 0
+                        )
+                        end_index = len(" ".join(split[0 : end_word + 1]))
+                        gold.append(
+                            {
+                                "text": text,
+                                "fine_type": fine_type,
+                                "start": start_index,
+                                "end": end_index,
+                            }
+                        )
 
         prased_dataset[key] = {
             "text": corpus[key]["content"],
@@ -96,7 +105,6 @@ def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
     return prased_dataset
 
 
-
 # --------------------------------------------------------------------
 # Helper ③ – build prompt (matches CascadeNER/demo.py)
 # --------------------------------------------------------------------
@@ -105,9 +113,9 @@ def build_prompt(sentence: str, tokenizer: AutoTokenizer) -> str:
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": sentence},
     ]
-    return tokenizer.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
-
-
+    return tokenizer.apply_chat_template(
+        msgs, tokenize=False, add_generation_prompt=True
+    )
 
 
 # --------------------------------------------------------------------
@@ -115,21 +123,24 @@ def build_prompt(sentence: str, tokenizer: AutoTokenizer) -> str:
 # --------------------------------------------------------------------
 if __name__ == "__main__":
     clearml_poc.clearml_init(
-        task_name="CascadeNER − NERtrieve Extraction", queue_name="a100_gpu", requirements=["transformers==4.46.2", "accelerate"],
+        task_name="CascadeNER − NERtrieve Extraction",
+        queue_name="a100_gpu",
+        requirements=["transformers==4.46.2", "accelerate"],
     )
-
 
     corpus_file = download_jsonl_file(CORPUS_FILES)
     entities_file = download_jsonl_file(ENTITIES_FILE)
     dataset = parse_base_dataset(corpus_file, entities_file)
+
     sentences, gold_lists, gold_sets, ids = [], [], [], []
-    # for ex in docs:
-    #     sent = ex.get("content", " ".join(ex.get("document_token_sequence", [])))
-    #     g_list, g_set = gold_spans(ex)
-    #     sentences.append(sent)
-    #     gold_lists.append(g_list)
-    #     gold_sets.append(g_set)
-    #     ids.append(ex.get("id"))
+    for doc_id, doc in dataset.items():
+        sent = doc["text"]
+        g_list = doc["gold"]
+        g_set = {g["text"] for g in g_list}
+        sentences.append(sent)
+        gold_lists.append(g_list)
+        gold_sets.append(g_set)
+        ids.append(doc_id)
 
     runner = LLMExtractionRunner(
         sentences=sentences,
@@ -143,4 +154,3 @@ if __name__ == "__main__":
         results_path="nertrieve_span_extraction.json",
     )
     runner.evaluate()
-

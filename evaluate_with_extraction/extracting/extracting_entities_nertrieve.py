@@ -1,12 +1,10 @@
-"""
-nertrieve_extraction.py
+"""nertrieve_extraction.py
 -----------------------
 
 Span-extraction evaluation on the NERtrieve dataset with CascadeNER.
 
-* Downloads the dataset from the official URL.
-* Samples ``N_EXAMPLES`` random sentences from the test split.
-* GPU-batched inference (BATCH_SIZE).
+* Downloads the corpus and entity annotations from ClearML.
+* GPU-batched inference (``BATCH_SIZE``).
 * Saves raw generated text per sample.
 * Stores predicted spans with character offsets.
 * Logs running precision / recall / F1.
@@ -66,8 +64,7 @@ def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
     corpus = {record["id"]: record for record in corpus_file}
     entities_file = {record["id"]: record for record in entities_file}
 
-    prased_dataset = {}
-    mismatch_counter = 0
+    parsed_dataset: Dict[str, Dict] = {}
 
     for key in tqdm(entities_file.keys(), desc="building dataset"):
         sentence = corpus[key]["content"]
@@ -96,13 +93,9 @@ def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
                             }
                         )
 
-        prased_dataset[key] = {
-            "text": corpus[key]["content"],
-            "gold": gold,
-        }
+        parsed_dataset[key] = {"text": sentence, "gold": gold}
 
-    print("Mismatch Counter:", mismatch_counter)
-    return prased_dataset
+    return parsed_dataset
 
 
 # --------------------------------------------------------------------

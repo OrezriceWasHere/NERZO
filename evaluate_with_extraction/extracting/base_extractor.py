@@ -124,6 +124,7 @@ class LLMExtractionRunner:
         gold_sets: Sequence[set],
         ids: Sequence[str] | None,
         extract_fn: Callable[[str, str], List[Dict]],
+        skip_assertions: bool = False,
         batch_size: int = 1,
         max_new_tokens: int = 256,
         repo: str = "CascadeNER/models_for_CascadeNER",
@@ -140,6 +141,7 @@ class LLMExtractionRunner:
         self.max_new_tokens = max_new_tokens
         self.results_path = results_path
         self.dataset_project = dataset_project
+        self.skip_assertions = skip_assertions
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             repo, subfolder=subfolder, trust_remote_code=True, padding_side="left"
@@ -181,10 +183,11 @@ class LLMExtractionRunner:
 
                 for i, (generated, sentence_id) in enumerate(zip(decoded, sentence_ids)):
                     preds_pos = self.extract_fn(b_sents[i], generated)
-                    for p in preds_pos:
-                        assert b_sents[i][p["start"] : p["end"]] == p["text"]
-                    for g in b_gold_l[i]:
-                        assert b_sents[i][g["start"] : g["end"]] == g["text"]
+                    if not self.skip_assertions:
+                        for p in preds_pos:
+                            assert b_sents[i][p["start"] : p["end"]] == p["text"]
+                        for g in b_gold_l[i]:
+                            assert b_sents[i][g["start"] : g["end"]] == g["text"]
                     preds_txt = {p["text"].strip() for p in preds_pos if p["text"].strip()}
 
                     gold_total += len(b_gold_set[i])

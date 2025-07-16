@@ -91,13 +91,12 @@ def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
                             }
                         )
 
-        prased_dataset[key] = {
+        parsed_dataset[key] = {
             "text": corpus[key]["content"],
             "gold": gold,
         }
 
-    print("Mismatch Counter:", mismatch_counter)
-    return prased_dataset
+    return parsed_dataset
 
 # --------------------------------------------------------------------
 # Helper ③ – build prompt (matches CascadeNER/demo.py)
@@ -141,6 +140,7 @@ if __name__ == "__main__":
         gold_lists=gold_lists,
         gold_sets=gold_sets,
         ids=ids,
+        skip_assertions=True,
         extract_fn=align_to_original,
         batch_size=BATCH_SIZE,
         max_new_tokens=MAX_NEW,

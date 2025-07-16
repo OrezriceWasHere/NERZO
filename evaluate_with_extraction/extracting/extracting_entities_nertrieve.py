@@ -24,12 +24,13 @@ from base_extractor import (
 )
 
 import clearml_poc
+from evaluate_with_extraction.extracting.base_extractor import align_to_original
 
 # --------------------------------------------------------------------
 # Settings
 # --------------------------------------------------------------------
 BATCH_SIZE = 100  # GPU batch
-MAX_NEW = 4096  # generation cut-off
+MAX_NEW = 4096 * 4  # generation cut-off
 
 REPO = "CascadeNER/models_for_CascadeNER"
 SUBF = "extractor"
@@ -78,11 +79,8 @@ def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
                             continue
                         start_word = min(location)
                         end_word = max(location)
-                        start_index = (
-                            len(" ".join(split[0:start_word])) + 1
-                            if start_word > 0
-                            else 0
-                        )
+                        space_offset = 1 if start_word > 0 else 0
+                        start_index = len(" ".join(split[0:start_word])) + space_offset
                         end_index = len(" ".join(split[0 : end_word + 1]))
                         gold.append(
                             {
@@ -93,10 +91,13 @@ def parse_base_dataset(corpus_file, entities_file) -> Dict[str, Dict]:
                             }
                         )
 
-        parsed_dataset[key] = {"text": sentence, "gold": gold}
+        prased_dataset[key] = {
+            "text": corpus[key]["content"],
+            "gold": gold,
+        }
 
-    return parsed_dataset
-
+    print("Mismatch Counter:", mismatch_counter)
+    return prased_dataset
 
 # --------------------------------------------------------------------
 # Helper ③ – build prompt (matches CascadeNER/demo.py)
@@ -140,7 +141,7 @@ if __name__ == "__main__":
         gold_lists=gold_lists,
         gold_sets=gold_sets,
         ids=ids,
-        extract_fn=extract_entities_with_positions,
+        extract_fn=align_to_original,
         batch_size=BATCH_SIZE,
         max_new_tokens=MAX_NEW,
         dataset_project="nertrieve_pipeline",

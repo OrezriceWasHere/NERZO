@@ -14,6 +14,8 @@ Span-extraction evaluation on the NERtrieve dataset with CascadeNER.
 import json
 import os
 from typing import Dict
+from dataclasses import dataclass
+import math
 from clearml import Dataset
 from transformers import AutoTokenizer
 from tqdm import tqdm
@@ -114,16 +116,37 @@ def build_prompt(sentence: str, tokenizer: AutoTokenizer) -> str:
 # --------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------
+
+@dataclass
+class SplitConfig:
+    split_count: int = 1
+    split_index: int = 0
+
+
 if __name__ == "__main__":
+    split_cfg = SplitConfig()
     clearml_poc.clearml_init(
         task_name="CascadeNER − NERtrieve Extraction",
         queue_name="a100_gpu",
         requirements=["transformers==4.46.2", "accelerate"],
     )
+    clearml_poc.clearml_connect_hyperparams(split_cfg, name="split")
+    part_name = f"{split_cfg.split_index + 1}_out_of_{split_cfg.split_count}"
+    clearml_poc.execution_task.set_name(
+        f"CascadeNER − NERtrieve Extraction part {part_name}"
+    )
+    clearml_poc.add_tags([part_name])
 
     corpus_file = download_jsonl_file(CORPUS_FILES)
     entities_file = download_jsonl_file(ENTITIES_FILE)
     dataset = parse_base_dataset(corpus_file, entities_file)
+
+    keys = sorted(dataset.keys())
+    split_size = math.ceil(len(keys) / split_cfg.split_count)
+    start = split_cfg.split_index * split_size
+    end = min(len(keys), (split_cfg.split_index + 1) * split_size)
+    part_keys = keys[start:end]
+    dataset = {k: dataset[k] for k in part_keys}
 
     sentences, gold_lists, gold_sets, ids = [], [], [], []
     for doc_id, doc in dataset.items():
@@ -135,6 +158,8 @@ if __name__ == "__main__":
         gold_sets.append(g_set)
         ids.append(doc_id)
 
+    results_filename = f"nertrieve_test_ir_base_part_{part_name}.json"
+
     runner = LLMExtractionRunner(
         sentences=sentences,
         gold_lists=gold_lists,
@@ -145,6 +170,6 @@ if __name__ == "__main__":
         batch_size=BATCH_SIZE,
         max_new_tokens=MAX_NEW,
         dataset_project="nertrieve_pipeline",
-        results_path="nertrieve_span_extraction.json",
+        results_path=results_filename,
     )
     runner.evaluate()

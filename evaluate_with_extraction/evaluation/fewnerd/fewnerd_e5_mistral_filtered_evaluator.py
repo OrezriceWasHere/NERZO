@@ -34,8 +34,12 @@ def load_metadata() -> Dict[str, Dict]:
     path = _load_dataset("span_extraction_results.json")
     with open(path, "r", encoding="utf-8") as fh:
         data: Dict[str, Dict] = json.load(fh)
-    # remove records without any gold labels
-    return {tid: rec for tid, rec in data.items() if rec.get("gold")}
+    # remove records without any gold labels and very short sentences
+    return {
+        tid: rec
+        for tid, rec in data.items()
+        if rec.get("gold") and len(rec.get("sentence", "").split()) > 4
+    }
 
 
 def calc_fine_type_to_ids(metadata: Dict[str, Dict]) -> Dict[str, Set[str]]:

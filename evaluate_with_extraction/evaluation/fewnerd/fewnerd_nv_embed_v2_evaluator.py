@@ -20,19 +20,25 @@ def _load_dataset(name: str) -> str:
     return os.path.join(ds.get_local_copy(), name)
 
 
-def load_embeddings() -> Dict[str, torch.Tensor]:
+def load_embeddings(valid_ids: Set[str]) -> Dict[str, torch.Tensor]:
     path = _load_dataset("sentence_embeddings_nv.pth")
     data = torch.load(path)
     result: Dict[str, torch.Tensor] = {}
     for tid, emb in tqdm(data.items(), desc="Loading embeddings"):
-        result[tid] = torch.tensor(emb, dtype=torch.float)
+        if tid in valid_ids:
+            result[tid] = torch.tensor(emb, dtype=torch.float)
     return result
 
 
 def load_metadata() -> Dict[str, Dict]:
     path = _load_dataset("span_extraction_results.json")
     with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+        data: Dict[str, Dict] = json.load(fh)
+    return {
+        tid: rec
+        for tid, rec in data.items()
+        if len(rec.get("sentence", "").split()) > 4
+    }
 
 
 def calc_fine_type_to_ids(metadata: Dict[str, Dict]) -> Dict[str, Set[str]]:
@@ -61,7 +67,7 @@ def main() -> None:
         requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
     )
     metadata = load_metadata()
-    embeddings = load_embeddings()
+    embeddings = load_embeddings(set(metadata.keys()))
     ft_to_ids = calc_fine_type_to_ids(metadata)
     ft_embeds = embed_fine_types(ft_to_ids)
     evaluator = SingleVectorRPrecision(

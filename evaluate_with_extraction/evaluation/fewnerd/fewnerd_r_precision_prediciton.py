@@ -22,19 +22,25 @@ def _load_dataset(name: str) -> str:
     return os.path.join(ds.get_local_copy(), name)
 
 
-def load_embeddings() -> Dict[str, List[torch.Tensor]]:
+def load_embeddings(valid_ids: Set[str]) -> Dict[str, List[torch.Tensor]]:
     path = _load_dataset("llm_mlp_embeddings.pth")
     data = torch.load(path)
     result: Dict[str, List[torch.Tensor]] = {}
     for tid, emb_list in tqdm(data.items(), desc="Loading embeddings"):
-        result[tid] = [torch.tensor(e, dtype=torch.float) for e in emb_list]
+        if tid in valid_ids:
+            result[tid] = [torch.tensor(e, dtype=torch.float) for e in emb_list]
     return result
 
 
 def load_metadata() -> Dict[str, Dict]:
     path = _load_dataset("span_extraction_results.json")
     with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+        data: Dict[str, Dict] = json.load(fh)
+    return {
+        tid: rec
+        for tid, rec in data.items()
+        if len(rec.get("sentence", "").split()) > 4
+    }
 
 
 def calc_fine_type_to_ids(metadata: Dict[str, Dict]) -> Dict[str, Set[str]]:
@@ -74,7 +80,7 @@ def main() -> None:
     clearml_poc.clearml_init(task_name="FewNERD R-Precision Evaluation prediction", project_name="fewnerd_pipeline")
     mlp_id = FineTuneLLM.mlp_head_model_id_from_clearml
     metadata = load_metadata()
-    embeddings = load_embeddings()
+    embeddings = load_embeddings(set(metadata.keys()))
     ft_to_ids = calc_fine_type_to_ids(metadata)
     ft_embeds = embed_fine_types(ft_to_ids, mlp_id)
     evaluator = MultiVecorRPrecision(

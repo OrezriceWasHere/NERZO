@@ -46,8 +46,12 @@ class FewNerdRPrecisionBM25:
     def _load_metadata(self) -> Dict[str, Dict]:
         path = self._load_dataset("span_extraction_results.json")
         with open(path, "r", encoding="utf-8") as fh:
-            result = json.load(fh)
-        return result
+            data: Dict[str, Dict] = json.load(fh)
+        return {
+            tid: rec
+            for tid, rec in data.items()
+            if len(rec.get("sentence", "").split()) > 4
+        }
 
     def _calc_fine_type_to_ids(self) -> Dict[str, set]:
         mapping: Dict[str, set] = defaultdict(set)

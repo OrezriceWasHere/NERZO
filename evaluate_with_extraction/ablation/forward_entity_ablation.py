@@ -22,7 +22,12 @@ def load_dataset() -> Dict[str, Dict]:
     ds = Dataset.get(dataset_name="span_extraction_results.json", dataset_project="fewnerd_pipeline")
     path = os.path.join(ds.get_local_copy(), "span_extraction_results.json")
     with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
+        data: Dict[str, Dict] = json.load(fh)
+    return {
+        tid: rec
+        for tid, rec in data.items()
+        if len(rec.get("sentence", "").split()) > 4
+    }
 
 
 def process_batch(

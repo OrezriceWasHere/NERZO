@@ -16,7 +16,7 @@ pandas
 peft
 aiofiles
 aiohttp
-sentence_transformers==2.7.0
+sentence_transformers==4.46.2
 datasets
 einops
 info-nce-pytorch

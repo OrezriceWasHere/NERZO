@@ -1,3 +1,4 @@
+anaconda-anon-usage
 torch >= 2.0.0
 tqdm
 elasticsearch[async]==8.17.2

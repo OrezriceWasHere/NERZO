@@ -20,7 +20,6 @@ def clearml_init(project_name=None, task_name=None, requirements=None, queue_nam
     Task.add_requirements('bitsandbytes', '>=0.43.2')
     Task.add_requirements('transformers', '==4.46.2')
     Task.add_requirements('torch', '==2.4.0')
-    Task.add_requirements('aiohttp')
     requirements = requirements or []
     for requirement in requirements:
         Task.add_requirements(requirement, '')
@@ -75,6 +74,10 @@ def clearml_display_image(image, iteration, series, description):
 @clearml_allowed
 def add_point_to_graph(title, series, x, y):
     execution_task.get_logger().report_scalar(title, series, value=y, iteration=x)
+
+@clearml_allowed
+def change_name(name):
+    execution_task.set_name(name)
 
 
 @clearml_allowed

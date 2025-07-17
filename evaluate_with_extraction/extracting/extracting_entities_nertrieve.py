@@ -119,8 +119,9 @@ def build_prompt(sentence: str, tokenizer: AutoTokenizer) -> str:
 
 @dataclass
 class SplitConfig:
-    split_count: int = 1
-    split_index: int = 0
+    split_count: int = 20
+    split_index: int = 7
+    batch_size: int = BATCH_SIZE
 
 
 if __name__ == "__main__":
@@ -132,7 +133,7 @@ if __name__ == "__main__":
     )
     clearml_poc.clearml_connect_hyperparams(split_cfg, name="split")
     part_name = f"{split_cfg.split_index + 1}_out_of_{split_cfg.split_count}"
-    clearml_poc.execution_task.set_name(
+    clearml_poc.change_name(
         f"CascadeNER − NERtrieve Extraction part {part_name}"
     )
     clearml_poc.add_tags([part_name])
@@ -167,7 +168,7 @@ if __name__ == "__main__":
         ids=ids,
         skip_assertions=True,
         extract_fn=align_to_original,
-        batch_size=BATCH_SIZE,
+        batch_size=split_cfg.batch_size,
         max_new_tokens=MAX_NEW,
         dataset_project="nertrieve_pipeline",
         results_path=results_filename,

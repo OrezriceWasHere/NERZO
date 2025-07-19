@@ -7,7 +7,9 @@ from clearml import Dataset
 
 import clearml_poc
 from sentence_embedder import SentenceEmbedder
-from evaluate_with_extraction.forwarding.sentence_embedder_forwarder import forward_dataset, BATCH_SIZE
+from evaluate_with_extraction.forwarding.sentence_embedder_forwarder import forward_dataset
+
+BATCH_SIZE = 8
 
 # ID of the sentence embedder used for forwarding
 EMBEDDER_ID = "nvidia/NV-Embed-v2"
@@ -39,7 +41,7 @@ def main() -> None:
     clearml_poc.clearml_init(
         task_name="NERtrieve sentence embedder forward NV",
         project_name=DATASET_PROJECT,
-        requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
+        requirements=["transformers==4.46.2", "sentence_transformers==4.1.0", "accelerate", "einops"],
     )
 
     embedder = SentenceEmbedder(llm_id=EMBEDDER_ID)

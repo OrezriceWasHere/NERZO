@@ -30,17 +30,17 @@ def avg(l):
 
 
 def upload_models(epoch):
-    global max_benchmark, current_benchmark
-    if epoch == args.epochs - 1 or math.isclose(current_benchmark, max_benchmark):
+    global max_benchmark, current_benchmark, similarity_model_clearml, classifier_model_clearml
+    if math.isclose(current_benchmark, max_benchmark):
+        print(f"recognized better benchmark value {max_benchmark}. Uploading model")
 
         torch.save(similarity_model.state_dict(), f"similarity_model.pt")
-        similarity_model_clearml = clearml_poc.generate_tracked_model(name="similarity_model", framework="PyTorch")
         clearml_poc.upload_model_to_clearml(similarity_model_clearml, "similarity_model.pt")
-
+        clearml_poc.add_tags(["similarity model " + str(similarity_model_clearml.id)])
         if not args.fine_tune_llm:
             torch.save(classifier_model.state_dict(), f"classifier_model.pt")
-            classifier_model_clearml = clearml_poc.generate_tracked_model(name="classifier_model", framework="PyTorch")
             clearml_poc.upload_model_to_clearml(classifier_model_clearml, "classifier_model.pt")
+            clearml_poc.add_tags(["classifier model " + str(classifier_model_clearml.id)])
 
 
 def tensorify(*document_items):
@@ -65,6 +65,7 @@ async def one_type_epoch_training(fine_type):
             anchor_type=fine_type,
             batch_size=args.batch_size,
             instances_per_type=args.instances_per_type,
+            hard_negative_ratio=args.hard_negative_ratio,
             llm_layer=args.llm_layer):
         optimizer.zero_grad()
         anchor, good_batch, bad_batch = tensorify(anchor, same_type, different_type)
@@ -181,13 +182,19 @@ def evaluate(epoch):
         auc_threshold_graph["auc"].append(type_auc)
 
     auc = metrics.roc_auc_score(y_score=results_so_far["predictions"], y_true=results_so_far["ground_truth"])
-    tpr, fpr, _ = metrics.roc_curve(y_score=results_so_far["predictions"], y_true=results_so_far["ground_truth"])
 
     if RuntimeArgs.upload_all_predictions:
         accuracy_at_prediction = fewnerd_processor.compute_accuracy_at_prediction(
             predictions=results_so_far["predictions"],
             ground_truths=results_so_far["ground_truth"])
         best_accuracy = accuracy_at_prediction["accuracy_if_threshold_was_here"].max()
+        tpr, fpr, _ = metrics.roc_curve(y_score=results_so_far["predictions"], y_true=results_so_far["ground_truth"])
+
+        clearml_poc.add_scatter(title="roc_curve",
+                                series="eval",
+                                iteration=epoch,
+                                values=np.vstack((tpr, fpr)).transpose())
+
 
     else:
         accuracy_at_prediction = None
@@ -203,10 +210,6 @@ def evaluate(epoch):
                          best_accuracy=best_accuracy,
                          auc=auc)
 
-    clearml_poc.add_scatter(title="roc_curve",
-                            series="eval",
-                            iteration=epoch,
-                            values=np.vstack((tpr, fpr)).transpose())
 
     index_column = auc_threshold_graph.pop("type")
     clearml_poc.add_table(title="per fine type",
@@ -308,6 +311,10 @@ if __name__ == "__main__":
 
     classifier_criterion = torch.nn.CrossEntropyLoss()
     classifier_model = Detector().to(device)
+
+    similarity_model_clearml = clearml_poc.generate_tracked_model(name="similarity_model", framework="PyTorch")
+    classifier_model_clearml = clearml_poc.generate_tracked_model(name="classifier_model", framework="PyTorch")
+    # clearml_poc.add_tags([similarity_model_clearml.id, classifier_model_clearml.id])
 
     if not args.fine_tune_llm:
 

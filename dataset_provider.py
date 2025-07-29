@@ -154,6 +154,21 @@ def get_top_results_for_entities(count_entity_types=500,
     response = search(index=index, query=query)
     return response
 
+async def ensure_existing_index(index_name, mapping):
+    if not await async_es.indices.exists(index=index_name):
+        await async_es.indices.create(index=index_name, body=mapping)
+
+async def upsert(data,doc_id, index):
+    body = {
+        "doc": data,
+        "doc_as_upsert": True
+    }
+    response = await async_es.update(index=index, id=doc_id, body=body)
+    return response
+
+async def ensure_field(index_name, field_mapping):
+    await async_es.indices.put_mapping(index=index_name, properties=field_mapping)
+
 async def consume_big_aggregation(query, agg_key, index):
     response = await async_es.search(index=index, body=query, size=0)
 

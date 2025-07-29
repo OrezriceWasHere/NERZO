@@ -58,11 +58,11 @@ args = task.connect(args)
 
 # Get the template task experiment that we want to optimize
 if not args['template_task_id']:
-    args['template_task_id'] = '122c134c23c242d59d0678147123e0a9'
+    args['template_task_id'] = 'a5e34dd5a53a4541a2aaf09b07843e0a'
 
 # Set default queue name for the Training tasks themselves.
 # later can be overridden in the UI
-execution_queue = 'gpu'
+execution_queue = 'dsicsgpu'
 
 # Example use case:
 an_optimizer = HyperParameterOptimizer(
@@ -78,19 +78,21 @@ an_optimizer = HyperParameterOptimizer(
     hyper_parameters=[
         UniformIntegerParameterRange('general/hidden_layer', min_value=50, max_value=250, step_size=25),
         UniformIntegerParameterRange('general/output_layer', min_value=50, max_value=250, step_size=25),
-        DiscreteParameterRange('general/lr', values=[7e-06]),
+        DiscreteParameterRange('general/lr', values=[2e-06]),
+
         DiscreteParameterRange('general/activation', values=['silu', 'relu']),
-        DiscreteParameterRange('general/noise', values=['dropout', 'identity']),
+        # DiscreteParameterRange('general/noise', values=['dropout', 'identity']),
         DiscreteParameterRange('general/loss_fn', values=['triplet_loss', 'contrastive_loss']),
         DiscreteParameterRange('general/llm_layer', values=['llama_3_17_v_proj', 'llama_3_3_13_k_proj']),
         DiscreteParameterRange('general/input_tokens', values=['start_end_pair', 'end']),
         DiscreteParameterRange('general/is_hidden_layer', values=[True, False]),
         DiscreteParameterRange('general/dropout', values=[0, 0.1, 0.2, 0.3, 0.4, 0.5]),
+        DiscreteParameterRange('general/hard_negative_ratio', values=[0.1, 0.15, 0.2, 0.25, 0.5, 1]),
         DiscreteParameterRange('general/triplet_loss_margin', values=[0.2, 0.5, 0.65, 0.8, 0.9, 1.0]),
 
     ],
     # this is the objective metric we want to maximize/minimize
-    objective_metric_title='accuracy',
+    objective_metric_title='auc',
     objective_metric_series='eval',
     # now we decide if we want to maximize it or minimize it (accuracy we maximize)
     objective_metric_sign='max_global',

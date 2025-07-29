@@ -16,6 +16,7 @@ urllib3.disable_warnings()
 
 # Connecting ClearML with the current process,
 # from here on everything is logged automatically
+Task.add_requirements("aiohttp")
 task = Task.init(project_name="fewnerd_pipeline", task_name="Pipeline step 3 index to database",
                  auto_connect_streams=False,
                  reuse_last_task_id=False)

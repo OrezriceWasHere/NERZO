@@ -53,10 +53,11 @@ def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]]) -> Dict[str, torch.T
     embedder = SentenceEmbedder(llm_id=SENTENCE_EMBEDDER_ID)
     type_to_name = fewnerd_processor.type_to_name()
     result = {}
-    for fine_type in fine_type_to_ids.keys():
-        readable = type_to_name[fine_type.split("-")[-1]]
-        emb = embedder.forward_query(readable)[0].cpu()
-        result[fine_type] = emb
+    with torch.no_grad():
+        for fine_type in fine_type_to_ids.keys():
+            readable = type_to_name[fine_type.split("-")[-1]]
+            emb = embedder.forward_query(readable)[0].cpu()
+            result[fine_type] = emb
     return result
 
 
@@ -64,7 +65,7 @@ def main() -> None:
     clearml_poc.clearml_init(
         task_name="FewNERD Sentence R-Precision Evaluation " + SENTENCE_EMBEDDER_ID,
         project_name="fewnerd_pipeline",
-        requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
+        requirements=["transformers==4.46.2" , "accelerate", "einops"],
     )
     metadata = load_metadata()
     embeddings = load_embeddings(set(metadata.keys()))

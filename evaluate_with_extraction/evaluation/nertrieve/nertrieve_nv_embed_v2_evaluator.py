@@ -60,7 +60,7 @@ def main() -> None:
     clearml_poc.clearml_init(
         task_name="NERtrieve Sentence R-Precision Evaluation " + SENTENCE_EMBEDDER_ID,
         project_name=DATASET_PROJECT,
-        requirements=["transformers==4.46.2", "sentence_transformers", "accelerate", "einops"],
+        requirements=["accelerate", "einops"],
     )
     metadata = load_metadata()
     embeddings = load_embeddings()

@@ -6,6 +6,7 @@ clearml
 openai
 scikit-learn
 pandas
+sentence_transformers==4.1.0
 transformers==4.46.2
 huggingface_hub
 bitsandbytes
@@ -16,7 +17,6 @@ pandas
 peft
 aiofiles
 aiohttp
-sentence_transformers==4.46.2
 datasets
 einops
 info-nce-pytorch

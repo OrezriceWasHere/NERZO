@@ -12,8 +12,7 @@ from llm_interface import LLMInterface
 from contrastive.args import Arguments, FineTuneLLM
 from contrastive import fewnerd_processor
 
-BATCH_SIZE = 15
-MAX_BATCHES = 40  # for debugging
+BATCH_SIZE = 4
 
 
 def load_dataset() -> Dict[str, Dict]:
@@ -45,7 +44,11 @@ def process_batch_llm(
             indices = (ent["start"], ent["end"])
             if ent["end"] == ent["start"]:
                 continue
-            tok_idx = llm.token_indices_given_text_indices(record["sentence"], indices)
+            try:
+                tok_idx = llm.token_indices_given_text_indices(record["sentence"], indices)
+            except AssertionError:
+                print("skipping due to tokenization error")
+                continue
             start = h[tok_idx[0] - 1]
             end = h[tok_idx[1]]
             repr_tensor = fewnerd_processor.choose_llm_representation(

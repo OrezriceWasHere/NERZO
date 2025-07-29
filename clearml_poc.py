@@ -17,12 +17,13 @@ def clearml_allowed(func):
 @clearml_allowed
 def clearml_init(project_name=None, task_name=None, requirements=None, queue_name=None):
     global execution_task, output_model
+    requirements = requirements or []
+    for requirement in requirements:
+        Task.add_requirements(requirement, '')
     Task.add_requirements('bitsandbytes', '>=0.43.2')
     Task.add_requirements('transformers', '==4.46.2')
     Task.add_requirements('torch', '==2.4.0')
     requirements = requirements or []
-    for requirement in requirements:
-        Task.add_requirements(requirement, '')
     # Task.add_requirements("requirements.txt", '')
 
     execution_task = Task.init(project_name=project_name or "NER - Zero Shot Chat GPT",

@@ -12,8 +12,7 @@ from llm_interface import LLMInterface
 from contrastive.args import Arguments, FineTuneLLM
 from contrastive import fewnerd_processor
 
-BATCH_SIZE = 10
-MAX_BATCHES = 40  # for debugging
+BATCH_SIZE = 8
 
 
 def load_dataset() -> Dict[str, Dict]:
@@ -70,6 +69,7 @@ def process_batch_mlp(
         batch_tensor = torch.stack(llm_reprs).to(device)
         with torch.no_grad():
             mlp_out = mlp(batch_tensor).cpu().tolist()
+        del batch_tensor
         for oid, emb in zip(owners, mlp_out):
             batch_result.setdefault(str(oid), []).append(emb)
 
@@ -77,6 +77,7 @@ def process_batch_mlp(
 
 
 def main():
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
     clearml_poc.clearml_init(
         task_name="NERtrieve LLM+MLP forward",
         project_name="nertrieve_pipeline",
@@ -106,6 +107,7 @@ def main():
         if len(batch) >= BATCH_SIZE:
             llm_reprs, owners = process_batch_llm(batch, llm, llm_args.layer, args, device)
             batch_result = process_batch_mlp(llm_reprs, owners, mlp, device)
+            del llm_reprs, owners
             for k, v in batch_result.items():
                 result.setdefault(k, []).extend(v)
             batch = []

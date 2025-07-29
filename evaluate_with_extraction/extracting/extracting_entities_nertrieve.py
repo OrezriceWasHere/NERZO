@@ -40,8 +40,11 @@ SUBF = "extractor"
 DATASET_NAME = "neretrieve_test_ir_base"
 DATASET_PROJECT = "neretrieve_pipeline"
 
-ENTITIES_FILE = "neretrieve_downsampled_350k.jsonl"
+ENTITIES_FILE = "NERetrive_IR_test_5_percent.jsonl"
 CORPUS_FILES = "NERetrive_IR_corpus.jsonl"
+
+
+
 
 
 def download_jsonl_file(file) -> list[Dict]:
@@ -120,8 +123,8 @@ def build_prompt(sentence: str, tokenizer: AutoTokenizer) -> str:
 @dataclass
 class SplitConfig:
     split_count: int = 20
-    split_index: int = 7
-    batch_size: int = BATCH_SIZE
+    split_index: int = 0
+    batch_size: int = 50
 
 
 if __name__ == "__main__":

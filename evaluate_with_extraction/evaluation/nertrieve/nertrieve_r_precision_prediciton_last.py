@@ -24,12 +24,29 @@ def _load_dataset(name: str) -> str:
     return os.path.join(ds.get_local_copy(), name)
 
 
-def load_embeddings() -> Dict[str, List[torch.Tensor]]:
+def load_last_embeddings(metadata: Dict[str, Dict]) -> Dict[str, List[torch.Tensor]]:
+    """Load embeddings keeping only the last case-insensitive mention per text."""
     path = _load_dataset("llm_mlp_embeddings.pth")
     data = torch.load(path)
     result: Dict[str, List[torch.Tensor]] = {}
     for tid, emb_list in tqdm(data.items(), desc="Loading embeddings"):
-        result[tid] = [torch.tensor(e, dtype=torch.float) for e in emb_list]
+        preds = metadata.get(tid, {}).get("predicted", [])
+        last_index: Dict[str, int] = {}
+        for idx, ent in enumerate(preds):
+            text = ent.get("text")
+            if text is None:
+                sent = metadata[tid].get("sentence", "")
+                text = sent[ent.get("start", 0): ent.get("end", 0)]
+            last_index[text.lower()] = idx
+        filtered: List[torch.Tensor] = []
+        for idx, ent in enumerate(preds):
+            text = ent.get("text")
+            if text is None:
+                sent = metadata[tid].get("sentence", "")
+                text = sent[ent.get("start", 0): ent.get("end", 0)]
+            if last_index.get(text.lower()) == idx and idx < len(emb_list):
+                filtered.append(torch.tensor(emb_list[idx], dtype=torch.float))
+        result[tid] = filtered
     return result
 
 
@@ -72,19 +89,28 @@ def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]], mlp_id: str) -> Dict
     return result
 
 
+class NertrieveRPrecisionPredictionLast:
+    def __init__(self) -> None:
+        self.metadata = load_metadata()
+        self.embeddings = load_last_embeddings(self.metadata)
+        self.ft_to_ids = calc_fine_type_to_ids(self.metadata)
+        self.ft_embeds = embed_fine_types(self.ft_to_ids, FineTuneLLM.mlp_head_model_id_from_clearml)
+        self.evaluator = MultiVecorRPrecision(
+            embeddings=self.embeddings,
+            fine_type_embeddings=self.ft_embeds,
+            fine_type_to_ids=self.ft_to_ids,
+        )
+
+    def evaluate(self):
+        return self.evaluator.evaluate("last text")
+
+
 def main() -> None:
-    clearml_poc.clearml_init(task_name="NERtrieve R-Precision Evaluation prediction", project_name=DATASET_PROJECT)
-    mlp_id = FineTuneLLM.mlp_head_model_id_from_clearml
-    metadata = load_metadata()
-    embeddings = load_embeddings()
-    ft_to_ids = calc_fine_type_to_ids(metadata)
-    ft_embeds = embed_fine_types(ft_to_ids, mlp_id)
-    evaluator = MultiVecorRPrecision(
-        embeddings=embeddings,
-        fine_type_embeddings=ft_embeds,
-        fine_type_to_ids=ft_to_ids,
+    clearml_poc.clearml_init(
+        task_name="NERtrieve R-Precision Evaluation prediction last text",
+        project_name=DATASET_PROJECT,
     )
-    evaluator.evaluate()
+    NertrieveRPrecisionPredictionLast().evaluate()
 
 
 if __name__ == "__main__":

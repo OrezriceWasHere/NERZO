@@ -58,7 +58,7 @@ def embed_fine_types(fine_type_to_ids: Dict[str, Set[str]], mlp_id: str) -> Dict
     result = {}
     for fine_type in fine_type_to_ids.keys():
         readable = name_map.get(fine_type, fine_type)
-        tokens = llm.tokenize(readable).to(device)
+        tokens = llm.tokenize(readable)
         with torch.no_grad():
             hidden = llm.get_llm_at_layer(tokens, layer=layer)
         start = hidden[0, 0]

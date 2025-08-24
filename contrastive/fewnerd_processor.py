@@ -1,5 +1,7 @@
+import json
+
 import math
-from functools import partial
+from functools import partial, cache
 import dataset_provider
 import torch
 from sklearn.metrics import accuracy_score
@@ -10,7 +12,11 @@ import numpy as np
 async def yield_dataset(anchor_type, dataset_types, batch_size=50,
                         instances_per_type=100,
                         hard_negative_ratio=0,
+                        similarity_strategy='instance',
                         llm_layer=None):
+
+    assert similarity_strategy in ('instance', 'type')
+
     extract = extract_entities_from_es_response
 
     batches = [
@@ -20,20 +26,29 @@ async def yield_dataset(anchor_type, dataset_types, batch_size=50,
     batch_sizes = [end - start for start, end in batches]
 
     for batch_size in batch_sizes:
-        anchor = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(anchor_type,
-                                                                               batch_size=1,
-                                                                               llm_layer=llm_layer)
-        assert len(anchor) == 1
-        anchor = anchor[0]
-        result_type = anchor["_source"]["fine_type"]
-        coarse_type = anchor["_source"]["coarse_type"]
-        text = anchor["_source"]["all_text"]
+        if similarity_strategy == 'instance':
+            anchor = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(anchor_type,
+                                                                                   batch_size=1,
+                                                                                   llm_layer=llm_layer)
+            assert len(anchor) == 1
+            anchor = anchor[0]
+            coarse_type = anchor["_source"]["coarse_type"]
+            text = anchor["_source"]["all_text"]
+            anchor = anchor["_source"]
+
+
+        else:
+            anchor = type_to_name()[anchor_type]
+            coarse_type = None
+            text = anchor
+
+        result_type = anchor_type
         good_batch = await dataset_provider.get_randomized_by_fine_type_fewnerd_v4(result_type,
                                                                                    batch_size=batch_size,
+                                                                                   # batch_size=1,
                                                                                    llm_layer=llm_layer)
         other_types = list(set(dataset_types) - {result_type})
 
-        anchor = anchor["_source"]
         chunked_good_batch = extract(good_batch)
         chunked_bad_batch = await negative_examples(
             coarse_type=coarse_type,
@@ -44,6 +59,11 @@ async def yield_dataset(anchor_type, dataset_types, batch_size=50,
             hard_negative_ratio=hard_negative_ratio
         )
         yield anchor, chunked_good_batch, chunked_bad_batch
+
+@cache
+def type_to_name() -> dict[str, str]:
+    return json.load(open("clearml_pipelines/entity_name_to_embedding/entities_to_names.json"))
+
 
 
 async def negative_examples(
@@ -88,32 +108,37 @@ async def yield_test_dataset(anchor_type, **kwargs):
 
 
 def train_fine_types():
-    return ['education', 'airport', 'restaurant', 'sportsleague', 'disease', 'hospital', 'painting', 'other',
+    return (['education', 'airport', 'restaurant', 'sportsleague', 'disease', 'hospital', 'painting', 'other',
             'library', 'sportsevent', 'soldier', 'game', 'educationaldegree', 'broadcastprogram', 'mountain',
             'road/railway/highway/transit', 'company', 'politician', 'attack/battle/war/militaryconflict',
             'astronomything', 'language', 'train', 'scholar', 'bodiesofwater', 'chemicalthing', 'director',
             'showorganization', 'writtenart', 'disaster', 'medical', 'music', 'airplane', 'biologything', 'theater',
             'sportsteam', 'government/governmentagency', 'livingthing', 'artist/author', 'protest', 'god']
+        # + test_fine_types()
+    )
+
 
 
 def test_fine_types(batch_size=50, instances_per_type=100, llm_layer=None):
     return ['island', 'athlete', 'politicalparty', 'actor', 'software', 'sportsfacility', 'weapon', 'food', 'election',
             'car', 'currency', 'park', 'award', 'GPE', 'media/newspaper', 'law', 'religion', 'film', 'hotel', 'ship']
 
-
 def extract_entities_from_es_response(response):
     return [docu["_source"] for docu in response] if response else []
 
 
-def choose_llm_representation(end, start, input_tokens):
+def choose_llm_representation(end, start, input_tokens, eos=None):
     assert input_tokens in __input_token_factory, f"input_tokens should be one of {list(__input_token_factory.keys())} but got {input_tokens}"
-    return __input_token_factory[input_tokens](end, start)
+    return __input_token_factory[input_tokens](end, start, eos)
 
 
 __input_token_factory = {
-    "diff": lambda end, start: (torch.tensor(end) - torch.tensor(start)),
-    "end": lambda end, start: torch.tensor(end),
-    "start_end_pair": lambda end, start: torch.concat((torch.tensor(end), torch.tensor(start)))
+    "diff": lambda end, start, eos=None: (torch.tensor(end, dtype=torch.float) - torch.tensor(start, dtype=torch.float)),
+    "end": lambda end, start, eos=None: torch.tensor(end, dtype=torch.float),
+    "start_end_pair": lambda end, start,eos=None: torch.concat((torch.tensor(end,dtype=torch.float), torch.tensor(start, dtype=torch.float)), dim=-1),
+    "start_eos_pair": lambda end, start=None, eos=None: torch.concat((torch.tensor(end, dtype=torch.float), torch.tensor(eos, dtype=torch.float)), dim=-1
+        )
+
 }
 
 
@@ -121,10 +146,12 @@ def pick_llm_output_for_document(device, input_tokens, llm_layer, is_fine_tune_l
     llm_representation = partial(choose_llm_representation, input_tokens=input_tokens)
 
     if not is_fine_tune_llm:
-        end_representation = [item["embedding"][llm_layer]["end"] for item in documents]
-        start_representation = [item["embedding"][llm_layer]["start"] for item in documents]
+        eos_batch = [item["embedding"][llm_layer]["eos"] for item in documents]
+        end_batch = [item["embedding"][llm_layer]["end"] for item in documents]
+        start_batch = [item["embedding"][llm_layer]["start"] for item in documents]
+
         stack = torch.stack(
-            [llm_representation(end, start) for end, start in zip(end_representation, start_representation)]).to(device)
+            [llm_representation(end=end, start=start,eos=eos) for end, start, eos in zip(end_batch, start_batch, eos_batch)]).to(device)
         return stack
 
     else:
@@ -240,4 +267,42 @@ def retrieve_anchors_for_sentence_test():
                       "467504acfd86fc8cfae73ff5e07da0fb47d28f40"],
             "election": ["b8c476aece2e1ca1f9ecf277b7edab05d85fb6ce", "3bb6af6478d4e7da31e0e5c99ba1b081ea5f255b",
                          "9132ff2b0b38f51e88648ae162f0119a6363237c"]}
+
+
+def load_entity_name_embeddings(layer_name, entity_name_strategy, index = "fewnerd_entity_name_to_embedding") -> dict[str, torch.Tensor]:
+
+    elastic_field = f'embedding.{layer_name}.{entity_name_strategy}'
+    if entity_name_strategy == "end_eos":
+        elastic_field_to_retrieve = [
+            f'embedding.{layer_name}.end',
+            f'embedding.{layer_name}.eos',
+        ]
+    else:
+        elastic_field_to_retrieve = [
+            f'embedding.{layer_name}.{entity_name_strategy}',
+
+        ]
+    elastic_query = {
+        "query": {
+            "match_all": {}
+        },
+        "size": 600,
+        "_source": [
+            "entity_name",
+            *elastic_field_to_retrieve,
+        ]
+    }
+
+    replies = dataset_provider.search(elastic_query, index=index)
+    if entity_name_strategy == "end_eos":
+        layer_to_tensor = {
+            item["_source"]["entity_name"]: torch.cat((torch.Tensor(item["_source"][f'embedding.{layer_name}.end']), torch.Tensor(item["_source"][f'embedding.{layer_name}.eos'])))
+            for item in replies['hits']['hits']
+        }
+    else:
+        layer_to_tensor = {
+            item["_source"]["entity_name"]: torch.Tensor(item["_source"][elastic_field])
+            for item in replies['hits']['hits']
+        }
+    return layer_to_tensor
 

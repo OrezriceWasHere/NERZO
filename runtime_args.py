@@ -17,7 +17,7 @@ def get_env(key, default_value=None):
 
 @dataclass
 class RuntimeArgs:
-    compute_queue: str = "a100_gpu"
+    compute_queue: str = "slurm_a100"
     debug_llm: bool = False
     max_llm_layer: Optional[int] = None
     upload_all_predictions: bool = False
@@ -26,9 +26,9 @@ class RuntimeArgs:
     running_remote: bool = is_key_enabled_in_env("RUNNING_REMOTE")
 
 class ElasticsearchConnection(BaseModel):
-    hosts: list[str] = Field(default_factory=lambda:get_env("ELASTICSEARCH_HOSTS", "http://dsigpu07:9200").split(","))
+    hosts: list[str] = Field(default_factory=lambda:get_env("ELASTICSEARCH_HOSTS", "http://dsigpu06:9200,http://dsigpu08:9200,http://dsigpu07:9200,http://dsicsgpu10:9200,http://dsicsgpu07:9200").split(","))
     verify_certs: bool = False
-    request_timeout: int = 30
+    request_timeout: int = 270
     ssl_show_warn: bool = False
     max_retries: int = 10
     retry_on_timeout: bool = True

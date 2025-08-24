@@ -8,7 +8,6 @@ class ContrastiveMLP(torch.nn.Module):
     def __init__(self, args: Arguments):
 
         super(ContrastiveMLP, self).__init__()
-
         input_size = self.__calc_input_size(args)
         gate = Gate(input_size) if args.enable_gate else torch.nn.Identity()
         activation = self.__build_activation(args)
@@ -30,7 +29,7 @@ class ContrastiveMLP(torch.nn.Module):
         return self.net(x)
 
     def __calc_input_size(self, args: Arguments):
-        if args.input_tokens == "start_end_pair":
+        if args.input_tokens == "start_end_pair" or args.input_tokens == "start_eos_pair":
             return args.input_layer * 2
         return args.input_layer
 

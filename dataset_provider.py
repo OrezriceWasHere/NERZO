@@ -1,14 +1,12 @@
-import os
+import asyncio
+
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 import queries
 import runtime_args
 
 elastic_conf = runtime_args.ElasticsearchConnection()
-
 es = Elasticsearch(**elastic_conf.model_dump())
-
 async_es = AsyncElasticsearch(**elastic_conf.model_dump())
-
 elastic_query = None
 
 both_indices = "ner_poc"
@@ -16,12 +14,20 @@ new_index = "no_redundant_object"
 
 
 def search(query=elastic_query, index=both_indices, **kwargs):
-    response = es.search(index=index, body=query, **kwargs)
+    response = es.search(index=index, body=query,allow_partial_search_results=False, **kwargs)
     return response.body
 
 async def search_async(index, query, **kwargs):
-    response = await async_es.search(index=index, body=query, **kwargs)
+    kwargs["request_cache"] = True
+    if "size" in kwargs and "size" in query:
+        query.pop("size")
+    response = await async_es.search(index=index, body=query, allow_partial_search_results=False, **kwargs)
     return response.body
+
+async def multisearch(index, bulk, **kwargs):
+    response = await async_es.msearch(index=index, body=bulk, **kwargs)
+    return response.body
+
 
 def write_to_index(data, index=new_index):
     response = es.index(index=index, body=data, id=data["id"])
@@ -72,7 +78,7 @@ async def get_randomized_by_fine_type_fewnerd_v4(fine_grained_type: str, batch_s
     return response
 
 async def get_hard_negative_fewnerd(fine_types: str | list[str],
-                              coarse_type: str | list[str],
+                              coarse_type: str | list[str] | None,
                               anchor_text:str,
                               batch_size: int,
                               llm_layer:str=None):
@@ -169,6 +175,15 @@ async def upsert(data,doc_id, index):
     response = await async_es.update(index=index, id=doc_id, body=body)
     return response
 
+async def bulk(batch):
+    return await async_es.bulk(body=batch)
+
+async def update_refresh_interval(index, refresh_interval):
+    return await async_es.indices.put_settings(
+        index=index,
+        body={"settings": {"index.refresh_interval": refresh_interval}}
+    )
+
 async def ensure_field(index_name, field_mapping):
     await async_es.indices.put_mapping(index=index_name, properties=field_mapping)
 
@@ -181,23 +196,23 @@ async def count(index_name, query):
     return response["count"]
 
 async def consume_big_aggregation(query, agg_key, index):
-    response = await async_es.search(index=index, body=query, size=0)
+    response = await async_es.search(index=index, body=query, size=0, allow_partial_search_results=False)
 
     while "after_key" in response["aggregations"][agg_key]:
         after_key = response["aggregations"][agg_key]["after_key"]
         for bucket in response["aggregations"][agg_key]["buckets"]:
             yield bucket
         query["aggs"][agg_key]["composite"]["after"] = after_key
-        response = await async_es.search(index=index, body=query, size=0)
+        response = await async_es.search(index=index, body=query, allow_partial_search_results=False)
 
 async def consume_big_query(query, index):
-    response = await async_es.search(index=index, body=query)
+    response = await async_es.search(index=index, body=query, allow_partial_search_results=False)
     hits = response.get("hits", {}).get("hits", [])
     search_after = hits[-1]["sort"] if hits else None
 
     while search_after:
         yield hits
         query["search_after"] = search_after
-        response = await async_es.search(index=index, body=query)
+        response = await async_es.search(index=index, body=query, allow_partial_search_results=False)
         hits = response.get("hits", {}).get("hits", [])
         search_after = hits[-1]["sort"] if hits else None

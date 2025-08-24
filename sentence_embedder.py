@@ -1,5 +1,10 @@
 from abc import ABC
+
+import torch
 from sentence_transformers import SentenceTransformer
+from torch import Tensor
+from transformers import AutoTokenizer, AutoModel
+
 from llm_interface import LLMInterface
 
 
@@ -17,6 +22,10 @@ class AbstractSentenceEmbedder(ABC):
     def forward_query(self, query):
         raise NotImplementedError()
 
+    def dim_size(self) -> int:
+        raise NotImplementedError()
+
+
 class SentenceEmbedder(AbstractSentenceEmbedder):
 
     def __init__(self, llm_id, passage_prompt="", query_prompt="", **kwargs):
@@ -24,6 +33,7 @@ class SentenceEmbedder(AbstractSentenceEmbedder):
         factory = {
             "intfloat/e5-mistral-7b-instruct": E5MistralSentenceEmbedder,
             "meta-llama/Meta-Llama-3.1-8B": LlamaSentenceEmbedder,
+            "nvidia/NV-Embed-v2": NV_Embed_V2
         }
         assert llm_id in factory, "cannot construct sentence embedder with id {}".format(llm_id)
         sentence_embedder_class = factory[llm_id]
@@ -35,26 +45,45 @@ class SentenceEmbedder(AbstractSentenceEmbedder):
     def forward_query(self, query):
         return self.sentence_embedder.forward_query(query)
 
+    def dim_size(self) -> int:
+        return self.sentence_embedder.dim_size()
+
 class E5MistralSentenceEmbedder(AbstractSentenceEmbedder):
 
     def __init__(self, llm_id, passage_prompt="", query_prompt="", **kwargs):
         super().__init__(llm_id, passage_prompt, query_prompt)
         self.model = SentenceTransformer(llm_id)
+        self.model.half()
+        self.model.max_seq_length = 65356 // 2
 
     def add_eos(self, input_examples):
         input_examples = input_examples + self.model.tokenizer.eos_token
         return input_examples
 
-    def forward_passage(self, passage):
-        passage_embeddings = self.model.encode(passage, batch_size=1)
+    def forward_passage(self, passages):
+        passages = passages if isinstance(passages, list) else [passages]
+        passage_embeddings = self.model.encode(passages,
+                                               batch_size=len(passages),
+                                               prompt=self.passage_prompt,
+                                               convert_to_numpy=False,
+                                               convert_to_tensor=True,
+                                               normalize_embeddings=True)
         return passage_embeddings
 
 
-    def forward_query(self, query):
-        query_embeddings = self.model.encode(query, batch_size=1, prompt=self.query_prompt,
-                                        normalize_embeddings=True).tolist()
+    def forward_query(self, queries):
+        queries = queries if isinstance(queries, list) else [queries]
+        query_embeddings = self.model.encode(queries,
+                                             batch_size=len(queries),
+                                             prompt=self.query_prompt,
+                                             convert_to_numpy=False,
+                                             convert_to_tensor=True,
+
+                                             normalize_embeddings=True)
         return query_embeddings
 
+    def dim_size(self):
+        return 4096
 
 class LlamaSentenceEmbedder(AbstractSentenceEmbedder):
     def __init__(self, llm_id, passage_prompt="", query_prompt="", **kwargs):
@@ -76,3 +105,42 @@ class LlamaSentenceEmbedder(AbstractSentenceEmbedder):
 
     def forward_query(self, query):
         return self.embedding_at_eos(query).detach().cpu().tolist()
+
+    def dim_size(self):
+        return 1024
+
+class NV_Embed_V2(AbstractSentenceEmbedder):
+
+    def __init__(self, llm_id, passage_prompt="", query_prompt="", **kwargs):
+        self.model = SentenceTransformer(llm_id, trust_remote_code=True)
+        self.model.max_seq_length = 65356 // 2
+        self.model.tokenizer.padding_side = "right"
+        self.query_prefix = query_prompt
+        self.model.half()
+        torch.cuda.empty_cache()
+
+
+    def add_eos(self, input_examples):
+        input_examples = [input_example + self.model.tokenizer.eos_token for input_example in input_examples]
+        return input_examples
+
+    def forward_passage(self, passage: str | list[str]):
+        passages = [passage] if isinstance(passage, str) else passage
+        passages = [item[:9000] for item in passages]
+        passage_embeddings = self.model.encode(self.add_eos(passages),
+                                               convert_to_numpy=False,
+                                               convert_to_tensor=True,
+                                               batch_size=len(passages), normalize_embeddings=True).half()
+        return passage_embeddings
+
+    def forward_query(self, query):
+        queries = [query] if isinstance(query, str) else query
+        query_embeddings = self.model.encode(
+            self.add_eos(queries), convert_to_numpy=False,
+            convert_to_tensor=True,
+            batch_size=len(queries), prompt=self.query_prefix, normalize_embeddings=True
+            ).half()
+        return query_embeddings
+
+    def dim_size(self) -> int:
+        return 4096

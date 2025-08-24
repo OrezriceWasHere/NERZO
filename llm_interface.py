@@ -1,9 +1,9 @@
 from os import environ as env
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, T5EncoderModel
 import torch
 from transformers import BitsAndBytesConfig
 from huggingface_hub import login
-from transformers import T5EncoderModel
+# from transformers import T5EncoderModel
 from peft import LoraConfig, get_peft_model, PeftType
 
 import llama3_tokenizer
@@ -51,9 +51,16 @@ def load_model_tokenizer(llm_id: str, tokenizer_llm_id: str = None, lora_config=
     )
 
     match tokenizer_llm_id:
-        case "meta-llama/Meta-Llama-3.1-8B" | "meta-llama/Llama-3.3-70B-Instruct":
+        case "meta-llama/Meta-Llama-3.1-8B" | "meta-llama/Llama-3.3-70B-Instruct" | "meta-llama/Meta-Llama-3-8B" :
             tokenizer = llama3_tokenizer.CustomLlama3Tokenizer(tokenizer_llm_id)
+
             tokenizer.tokenizer.pad_token = tokenizer.tokenizer.eos_token
+        case "google/gemma-7b":
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_llm_id)
+            tokenizer.pad_token = tokenizer.eos_token
+        case "mistralai/Mistral-7B-v0.3":
+            tokenizer = AutoTokenizer.from_pretrained(tokenizer_llm_id)
+            tokenizer.pad_token = tokenizer.eos_token
         case _:
             tokenizer = AutoTokenizer.from_pretrained(tokenizer_llm_id)
 
@@ -97,6 +104,7 @@ class LLMInterface:
 
         self.extractable_parts = {}
         self.interested_layers = interested_layers or kwargs.get("layer") or []
+        self.max_tokens_offset = 4096
         self.register_hooks(self.model)
 
     def hook_fn(self, name):
@@ -118,8 +126,12 @@ class LLMInterface:
             if any([not self.interested_layers, name in self.interested_layers]):
                 module.register_forward_hook(self.hook_fn(name))
 
+    def tokens_count(self, prompt_text):
+        tokens = self.tokenizer(prompt_text, max_length=self.max_tokens_offset)
+        return len(tokens.input_ids)
+
     def tokenize(self, prompt: str | list[str]) -> torch.Tensor:
-        return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=512)
+        return self.tokenizer(prompt, return_tensors="pt", padding=True, truncation=True, max_length=self.max_tokens_offset)
 
     def tokens_indices_part_of_sentence(self, sentence, part_of_sentence):
         """
@@ -189,7 +201,7 @@ class LLMInterface:
         #
         # Tokenize the sentence and get word-to-token mappings (word_ids)
         # tokens = self.tokenizer.tokenize(sentence)
-        encoding = self.tokenizer(sentence, return_offsets_mapping=True)
+        encoding = self.tokenizer(sentence, return_offsets_mapping=True, max_length=self.max_tokens_offset)
 
         # Get the offsets for each token (start, end positions in original sentence)
         offsets = encoding['offset_mapping']

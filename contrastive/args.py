@@ -7,16 +7,18 @@ class Arguments:
     lr: float = 2e-6
 
     input_layer: int = 1024
-    hidden_layer: int = 100
-    output_layer: int = 250
+    hidden_layer: int = 500
+    output_layer: int = 500
 
-    is_hidden_layer: bool = False
-    batch_size: int = 20
-    instances_per_type: int = 300
+    is_hidden_layer: bool = True
+    batch_size: int = 50
+    instances_per_type: int = 100
 
-    llm_layer: str = "llama_3_entire_model"
+    llm_layer: str = "llama_3_17_v_proj"
 
-    input_tokens: str = "end"  # [possible_values: "end", "start_end_pair", "diff"]
+    input_tokens: str = "end"  # [possible_values: "end", "start_end_pair", "diff","start_eos_pair"]
+    entity_name_embeddings: str = "end"
+
     fine_tune_llm: bool = False
     disable_similarity_training: bool = False
 
@@ -25,8 +27,8 @@ class Arguments:
     triplet_loss_margin: float = 0.5
     activation: str = "silu"
     noise: str = "dropout"
-    dropout: float = 0.00
-    epochs: int = 300
+    dropout: float = 0.1
+    epochs: int = 50
     enable_gate: bool = True
     loss_fn: str = "triplet_loss" # possible_values: "triplet_loss", "dpr_loss", "contrastive_loss", triplet_contrastive_loss
 
@@ -44,9 +46,16 @@ def dataclass_decoder(dct: dict, cls: Type[Any]) -> Any:
     field_types = {field.name: field.type for field in fields(cls)}
     return cls(**{key: convert_value(value, field_types[key]) for key, value in dct.items() if key in field_types})
 
+# @dataclass
+# class FineTuneLLM:
+#     llm_id: str = 'intfloat/e5-mistral-7b-instruct'
+#     layer: str = "model.layers.17.self_attn.v_proj"
+#     mlp_head_model_id_from_clearml: str = "a18145c711b046cbb9fbb86e38ac3e47"
+#     max_llm_layer: Optional[int] = 18
+
 @dataclass
 class FineTuneLLM:
-    llm_id: str = 'intfloat/e5-mistral-7b-instruct'
+    llm_id: str = "meta-llama/Meta-Llama-3.1-8B"
     layer: str = "model.layers.17.self_attn.v_proj"
-    mlp_head_model_id_from_clearml: str = "a18145c711b046cbb9fbb86e38ac3e47"
-    max_llm_layer: Optional[int] = 18
+    mlp_head_model_id_from_clearml: str = "48d1f5c0237149aa9dedd0c028b25b3c"
+    max_llm_layer: Optional[int] = None

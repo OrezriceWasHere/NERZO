@@ -46,32 +46,47 @@ from fuzzy_span_recall import count_fuzzy_matches
 # ---------------------------------------------------------------------------
 
 def tags_to_spans(tokens: Sequence[str], tags: Sequence[str]) -> List[Tuple[int, int, str]]:
-    """Convert BIO tags to character spans."""
+    """Convert token-level tags to character spans.
+
+    The dataset uses a simple tagging scheme where each token is either
+    assigned a label or the string ``"O"``.  Consecutive tokens with the same
+    non-``"O"`` label belong to the same span.
+    """
+
     spans: List[Tuple[int, int, str]] = []
     current_label: str | None = None
-    start_char: int | None = None
+    prev_tag = "O"
+    char_pos = 0
+    span_start = 0
+    span_end = 0
 
-    offset = 0
-    for token, tag in zip(tokens, tags):
-        token_start = offset
-        token_end = token_start + len(token)
-        offset = token_end + 1  # account for joining spaces
+    def flush() -> None:
+        nonlocal current_label, span_start, span_end
+        if current_label is not None:
+            spans.append((span_start, span_end, current_label))
+            current_label = None
 
-        if tag.startswith("B-"):
-            if current_label is not None:
-                spans.append((start_char, prev_end, current_label))
-            current_label = tag[2:]
-            start_char = token_start
-        elif tag.startswith("I-") and current_label == tag[2:]:
-            pass
+    for idx, (token, tag) in enumerate(zip(tokens, tags)):
+        token_start = char_pos
+        char_pos += len(token)
+        token_end = char_pos
+        if idx < len(tokens) - 1:
+            char_pos += 1  # account for joining spaces
+
+        if tag != "O":
+            if tag == prev_tag and current_label is not None:
+                span_end = token_end
+            else:
+                flush()
+                current_label = tag
+                span_start = token_start
+                span_end = token_end
+            prev_tag = tag
         else:
-            if current_label is not None:
-                spans.append((start_char, prev_end, current_label))
-                current_label = None
-        prev_end = token_end
+            flush()
+            prev_tag = "O"
 
-    if current_label is not None:
-        spans.append((start_char, prev_end, current_label))
+    flush()
     return spans
 
 

@@ -46,7 +46,13 @@ from fuzzy_span_recall import count_fuzzy_matches
 # ---------------------------------------------------------------------------
 
 def tags_to_spans(tokens: Sequence[str], tags: Sequence[str]) -> List[Tuple[int, int, str]]:
-    """Convert BIO tags to character spans."""
+    """Convert token-level tags to character spans.
+
+    The dataset uses a simple tagging scheme where each token is either
+    assigned a label or the string ``"O"``.  Consecutive tokens with the same
+    non-``"O"`` label belong to the same span.
+    """
+
     spans: List[Tuple[int, int, str]] = []
     current_label: str | None = None
     start_char: int | None = None
@@ -57,17 +63,18 @@ def tags_to_spans(tokens: Sequence[str], tags: Sequence[str]) -> List[Tuple[int,
         token_end = token_start + len(token)
         offset = token_end + 1  # account for joining spaces
 
-        if tag.startswith("B-"):
-            if current_label is not None:
-                spans.append((start_char, prev_end, current_label))
-            current_label = tag[2:]
-            start_char = token_start
-        elif tag.startswith("I-") and current_label == tag[2:]:
-            pass
-        else:
+        if tag == "O":
             if current_label is not None:
                 spans.append((start_char, prev_end, current_label))
                 current_label = None
+        else:
+            if current_label is None:
+                current_label = tag
+                start_char = token_start
+            elif tag != current_label:
+                spans.append((start_char, prev_end, current_label))
+                current_label = tag
+                start_char = token_start
         prev_end = token_end
 
     if current_label is not None:

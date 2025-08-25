@@ -85,7 +85,6 @@ def tags_to_spans(tokens: Sequence[str], tags: Sequence[str]) -> List[Tuple[int,
         else:
             flush()
             prev_tag = "O"
-
     flush()
     return spans
 

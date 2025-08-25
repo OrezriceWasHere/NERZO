@@ -35,10 +35,10 @@ import itertools
 import json
 import uuid
 from typing import List, Sequence, Tuple
-
+from tqdm import tqdm
 from datasets import load_dataset
 
-from cascade_llm_entity_extractor import load_cascadener, predict_spans
+from cascade_llm_entity_extractor import load_cascadener, predict_spans_batch
 from fuzzy_span_recall import count_fuzzy_matches
 
 # ---------------------------------------------------------------------------
@@ -75,22 +75,6 @@ def tags_to_spans(tokens: Sequence[str], tags: Sequence[str]) -> List[Tuple[int,
     return spans
 
 
-# Example FewNERD slice kept only for reference; it is not used by the script.
-# SAMPLE_DATASET = [
-#     {
-#         "tokens": ["Barack", "Obama", "visited", "Paris", "in", "2015", "."],
-#         "ner_tags": [
-#             "B-person/actor",
-#             "I-person/actor",
-#             "O",
-#             "B-location/city",
-#             "O",
-#             "O",
-#             "O",
-#         ],
-#     }
-# ]
-
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -104,14 +88,19 @@ def main() -> None:
         help="Path to write extracted entity dataset",
     )
     parser.add_argument(
-        "--limit",
+        "--batch_size",
         type=int,
-        default=None,
-        help="Process only the first N sentences (for quick demos)",
+        default=10,
+        help="Number of sentences to process at once",
     )
     args = parser.parse_args()
 
-    dataset = load_dataset("DFKI-SLT/few-nerd", "supervised")
+    data_files = {
+	    "train": "hf://datasets/DFKI-SLT/few-nerd@refs/convert/parquet/supervised/train/*.parquet",
+	    "validation": "hf://datasets/DFKI-SLT/few-nerd@refs/convert/parquet/supervised/validation/*.parquet",
+	    "test": "hf://datasets/DFKI-SLT/few-nerd@refs/convert/parquet/supervised/test/*.parquet",
+    }
+    dataset = load_dataset("parquet", data_files=data_files)
     label_names = dataset["train"].features["ner_tags"].feature.names
 
     tokenizer, model = load_cascadener()
@@ -120,38 +109,40 @@ def main() -> None:
     total_gold = 0
     total_matched = 0
 
-    all_examples = itertools.chain(
-        dataset["train"], dataset["validation"], dataset["test"]
-    )
-    for example in itertools.islice(all_examples, args.limit):
-        tokens = example["tokens"]
-        text = " ".join(tokens)
-        tags = [label_names[t] for t in example["ner_tags"]]
-        gold_spans = tags_to_spans(tokens, tags)
+    all_examples = list(dataset["train"]) +  list(dataset["validation"]) + list(dataset["test"])
+    all_examples = all_examples[:20]
+    batches = list(range(0, len(all_examples), args.batch_size))
 
-        pred_spans = predict_spans(text, tokenizer, model)
-
-        gold_texts = [text[start:end] for start, end, _ in gold_spans]
-        pred_texts = [p["text"] for p in pred_spans]
-        matched, gold_count = count_fuzzy_matches(gold_texts, pred_texts)
-        total_matched += matched
-        total_gold += gold_count
-
-        record = {
-            "id": str(uuid.uuid4()),
-            "sentence": text,
-            "gold": [
-                {
-                    "text": text[start:end],
-                    "start": start,
-                    "end": end,
-                    "label": label,
-                }
-                for start, end, label in gold_spans
-            ],
-            "predicted": pred_spans,
-        }
-        records.append(record)
+    for batch_start_index in tqdm(batches):
+        batch = all_examples[batch_start_index:batch_start_index + args.batch_size]
+        texts = [" ".join(ex["tokens"]) for ex in batch]
+        tags_batch = [[label_names[t] for t in ex["ner_tags"]] for ex in batch]
+        gold_batch = [
+            tags_to_spans(ex["tokens"], tags)
+            for ex, tags in zip(batch, tags_batch)
+        ]
+        pred_batch = predict_spans_batch(texts, tokenizer, model)
+        for text, gold_spans, pred_spans in zip(texts, gold_batch, pred_batch):
+            gold_texts = [text[start:end] for start, end, _ in gold_spans]
+            pred_texts = [p["text"] for p in pred_spans]
+            matched, gold_count = count_fuzzy_matches(gold_texts, pred_texts)
+            total_matched += matched
+            total_gold += gold_count
+            record = {
+                "id": str(uuid.uuid4()),
+                "sentence": text,
+                "gold": [
+                    {
+                        "text": text[start:end],
+                        "start": start,
+                        "end": end,
+                        "label": label,
+                    }
+                    for start, end, label in gold_spans
+                ],
+                "predicted": pred_spans,
+            }
+            records.append(record)
 
     recall = total_matched / total_gold if total_gold else 0.0
 

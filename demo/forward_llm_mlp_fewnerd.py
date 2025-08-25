@@ -23,7 +23,7 @@ from typing import Dict, List
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-EMBED_DIM = 256  # dimensionality of the final embedding
+EMBED_DIM = 500  # dimensionality of the final embedding
 
 
 class Gate(torch.nn.Module):
@@ -43,14 +43,14 @@ class Gate(torch.nn.Module):
 
 @dataclass
 class MLPArgs:
-    input_layer: int
-    output_layer: int
-    enable_gate: bool = False
-    activation: str = "relu"
-    noise: str = "identity"
-    is_hidden_layer: bool = False
-    hidden_layer: int = 0
-    dropout: float = 0.0
+    input_layer: int = 1024
+    hidden_layer: int = 500
+    output_layer: int = 500
+    enable_gate: bool = True
+    activation: str = "silu"
+    noise: str = "dropout"
+    is_hidden_layer: bool = True
+    dropout: float = 0.1
 
 
 class MLP(torch.nn.Module):
@@ -167,7 +167,7 @@ def main() -> None:
         torch_dtype=torch.float32,
     ).to(device).eval()
 
-    mlp_args = MLPArgs(input_layer=model.config.hidden_size, output_layer=EMBED_DIM)
+    mlp_args = MLPArgs()
     mlp = MLP(mlp_args).to(device)
     mlp.load_state_dict(torch.load("entity_head.pth", map_location=device))
     mlp.eval()

@@ -18,7 +18,7 @@ from typing import List, Tuple, Dict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
-__all__ = ["load_cascadener", "predict_spans", "align_to_original", "extract_entities"]
+__all__ = ["load_cascadener", "predict_spans_batch", "align_to_original", "extract_entities"]
 
 
 # ---------------------------------------------------------------------------
@@ -155,30 +155,22 @@ def align_to_original(
     return _remove_nested(out)
 
 
-def predict_spans(
-    sentence: str,
+
+def predict_spans_batch(
+    sentences: List[str],
     tokenizer,
     model,
     *,
     max_new_tokens: int = 2096,
-) -> List[Dict]:
-    """Generate entity predictions for ``sentence``.
-
-    Parameters
-    ----------
-    sentence: str
-        The input sentence.
-    tokenizer, model:
-        Objects returned by :func:`load_cascadener`.
-    max_new_tokens: int, optional
-        Maximum number of new tokens to generate. Default is 2096 as
-        requested for this demo.
-    """
-    prompt = build_prompt(sentence, tokenizer)
-    enc = tokenizer(prompt, return_tensors="pt").to(model.device)
+) -> List[List[Dict]]:
+    """Batch version of :func:`predict_spans` for multiple sentences."""
+    prompts = [build_prompt(s, tokenizer) for s in sentences]
+    enc = tokenizer(prompts, return_tensors="pt", padding=True).to(model.device)
+    input_lens = (enc["input_ids"] != tokenizer.pad_token_id).sum(dim=1)
     out = model.generate(**enc, max_new_tokens=max_new_tokens)
-    generated = tokenizer.decode(
-        out[0][enc["input_ids"].shape[1]:], skip_special_tokens=True
-    )
-    return align_to_original(sentence, generated)
-
+    preds: List[List[Dict]] = []
+    for i, sent in enumerate(sentences):
+        gen_tokens = out[i][input_lens[i]:]
+        gen_text = tokenizer.decode(gen_tokens, skip_special_tokens=True)
+        preds.append(align_to_original(sent, gen_text))
+    return preds

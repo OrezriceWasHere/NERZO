@@ -8,6 +8,12 @@ to recover the labels.  ``torch`` (or a ``pickle`` fallback) is used to load the
 vectors while ``faiss`` performs the cosine-similarity search.  If ``faiss`` is
 unavailable the script falls back to a small pure-Python implementation.
 
+The ``--entities`` JSON must have the schema produced by
+``extracting_entities_fewnerd.py`` (see that script for details).  The
+``--embeddings`` file stores a ``dict[str, List[List[float]]]`` mapping each
+sentence identifier to the corresponding entity embeddings as written by
+``forward_llm_mlp_fewnerd.py``.
+
 R-precision is calculated by treating each entity as a query and ranking all
 other entities by cosine similarity of their embedding vectors.  The number of
 relevant items ``R`` is equal to the number of entities of the same type minus
@@ -99,16 +105,29 @@ def r_precision(embeddings: List[Sequence[float]], labels: List[str]) -> Tuple[D
     return results, macro
 
 
-def main() -> None:
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--embeddings", default="fewnerd_embeddings.pth", help="Embedding .pth file")
     parser.add_argument("--entities", default="fewnerd_entities.json", help="Original entity JSON")
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    emb_map = torch.load(args.embeddings)
 
-    with open(args.entities, "r", encoding="utf8") as f:
+def load_data(emb_path: str, ent_path: str) -> Tuple[Dict[str, List[Sequence[float]]], Dict[str, dict]]:
+    """Load embedding map and entity records."""
+
+    emb_map = torch.load(emb_path)
+    with open(ent_path, "r", encoding="utf8") as f:
         sent_records = {rec["id"]: rec for rec in json.load(f)}
+    return emb_map, sent_records
+
+
+def gather_embeddings(
+    emb_map: Dict[str, List[Sequence[float]]],
+    sent_records: Dict[str, dict],
+) -> Tuple[List[Sequence[float]], List[str]]:
+    """Flatten embedding dictionary and collect corresponding labels."""
 
     embeddings: List[Sequence[float]] = []
     labels: List[str] = []
@@ -117,7 +136,13 @@ def main() -> None:
         for vec, ent in zip(vecs, gold):
             embeddings.append(vec)
             labels.append(ent["label"])
+    return embeddings, labels
 
+
+def main() -> None:
+    args = parse_args()
+    emb_map, sent_records = load_data(args.embeddings, args.entities)
+    embeddings, labels = gather_embeddings(emb_map, sent_records)
     scores, macro = r_precision(embeddings, labels)
 
     print("R-precision per fine type:")

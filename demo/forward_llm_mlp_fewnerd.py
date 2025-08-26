@@ -2,10 +2,25 @@
 
 This script reads the sentence-level JSON produced by
 ``extracting_entities_fewnerd.py`` and generates an embedding for every gold
-entity span.  The embedding is taken from block 17 of ``Meta‑Llama‑3.1`` and
-projected through an MLP whose architecture mirrors the training-time model in
-``mlp.py``.  The resulting vectors are written as a binary ``.pth`` file mapping
-each sentence identifier to a list of its entity embeddings.
+entity span.  The expected input JSON has the form::
+
+    [
+        {
+            "id": "<uuid>",
+            "sentence": "...",
+            "gold": [
+                {"text": "Barack Obama", "start": 0, "end": 12, "label": "person/actor"},
+                ...
+            ],
+            "predicted": [ ... ]
+        },
+        ...
+    ]
+
+For each gold entity we take the hidden state difference of the start and end
+tokens from block 17 of ``Meta‑Llama‑3.1-8B`` and project it through a small
+MLP.  The resulting vectors are written as a binary ``.pth`` file mapping each
+sentence identifier to a list of its entity embeddings.
 
 Run the script with::
 
@@ -147,16 +162,22 @@ def embed_with_llama(
     return records
 
 
-def main() -> None:
+# ---------------------------------------------------------------------------
+# Entry points
+# ---------------------------------------------------------------------------
+
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", default="fewnerd_entities.json", help="Input JSON file")
     parser.add_argument("--output", default="fewnerd_embeddings.pth", help="Output .pth file")
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    with open(args.input, "r", encoding="utf8") as f:
-        sentences = json.load(f)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def load_models(device: torch.device):
+    """Load tokenizer, base model and MLP head."""
+
     tokenizer = AutoTokenizer.from_pretrained(
         "meta-llama/Meta-Llama-3.1-8B",
         use_fast=True,
@@ -166,16 +187,33 @@ def main() -> None:
         output_hidden_states=True,
         torch_dtype=torch.float32,
     ).to(device).eval()
-
     mlp_args = MLPArgs()
     mlp = MLP(mlp_args).to(device)
     mlp.load_state_dict(torch.load("entity_head.pth", map_location=device))
     mlp.eval()
+    return tokenizer, model, mlp
+
+
+def load_sentences(path: str) -> List[Dict]:
+    """Read input JSON containing sentence records."""
+
+    with open(path, "r", encoding="utf8") as f:
+        return json.load(f)
+
+
+def main() -> None:
+    args = parse_args()
+    sentences = load_sentences(args.input)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer, model, mlp = load_models(device)
 
     records = embed_with_llama(sentences, tokenizer, model, mlp, device)
 
     torch.save(records, args.output)
-    print(f"Wrote embeddings for {sum(len(v) for v in records.values())} entities to {args.output}")
+    print(
+        f"Wrote embeddings for {sum(len(v) for v in records.values())} entities to {args.output}"
+    )
 
 
 if __name__ == "__main__":

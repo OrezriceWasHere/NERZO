@@ -26,10 +26,13 @@ def normalise(text: str) -> str:
 
 
 def jaccard(a: set[str], b: set[str]) -> float:
+    """Return the Jaccard similarity between two token sets."""
     return len(a & b) / len(a | b) if (a | b) else 0.0
 
 
 def is_match(gold: str, pred: str, min_jacc: float = 0.8) -> bool:
+    """Return ``True`` if ``pred`` matches ``gold`` under fuzzy criteria."""
+
     gold_t, pred_t = set(gold.split()), set(pred.split())
     return (
         gold_t <= pred_t

@@ -48,7 +48,7 @@ def load_cascadener():
         torch_dtype=torch.bfloat16,
         device_map="auto",
         trust_remote_code=True,
-    ).eval()
+    ).cuda().eval()
     return tokenizer, model
 
 

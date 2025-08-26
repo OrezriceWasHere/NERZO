@@ -104,7 +104,7 @@ def main() -> None:
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=10,
+        default=100,
         help="Number of sentences to process at once",
     )
     args = parser.parse_args()
@@ -124,7 +124,6 @@ def main() -> None:
     total_matched = 0
 
     all_examples = list(dataset["train"]) +  list(dataset["validation"]) + list(dataset["test"])
-    all_examples = all_examples[:20]
     batches = list(range(0, len(all_examples), args.batch_size))
 
     for batch_start_index in tqdm(batches):

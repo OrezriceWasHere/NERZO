@@ -18,14 +18,7 @@ from typing import List, Tuple, Dict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
-__all__ = [
-    "load_cascadener",
-    "build_prompt",
-    "predict_spans",
-    "predict_spans_batch",
-    "align_to_original",
-    "extract_entities",
-]
+__all__ = ["load_cascadener", "predict_spans_batch", "align_to_original", "extract_entities"]
 
 
 # ---------------------------------------------------------------------------
@@ -73,13 +66,6 @@ def build_prompt(sentence: str, tokenizer) -> str:
 # ---------------------------------------------------------------------------
 
 def _is_open(text: str, i: int, inside: bool) -> bool:
-    """Return ``True`` if ``##`` at position ``i`` opens a span.
-
-    The extractor occasionally produces nested ``##`` markers.  When we
-    encounter ``##`` while already inside a span we only treat it as opening
-    another span if the following character is alphanumeric.
-    """
-
     if not inside:
         return True
     nxt = i + 2
@@ -133,23 +119,11 @@ def extract_entities(text: str, longest_only: bool = False) -> List[Tuple[str, i
 
 
 def _find_next(hay: str, needle: str, start: int) -> Tuple[int, int]:
-    """Return the ``(start, end)`` of the next ``needle`` in ``hay``.
-
-    ``start`` specifies the offset from which to search.  ``(-1, -1)`` is
-    returned when ``needle`` is not found.
-    """
-
     k = hay.find(needle, start)
     return (k, k + len(needle)) if k != -1 else (-1, -1)
 
 
 def _remove_nested(spans: List[Dict]) -> List[Dict]:
-    """Remove spans fully contained within other spans.
-
-    When the model marks overlapping entities we keep only the outer-most span
-    at each position.  The returned list is sorted by ``start`` offset.
-    """
-
     keep: List[Dict] = []
     for sp in sorted(spans, key=lambda d: d["end"] - d["start"], reverse=True):
         if not any(sp["start"] >= k["start"] and sp["end"] <= k["end"] for k in keep):
@@ -180,23 +154,6 @@ def align_to_original(
 
     return _remove_nested(out)
 
-
-def predict_spans(
-    sentence: str,
-    tokenizer,
-    model,
-    *,
-    max_new_tokens: int = 2096,
-) -> List[Dict]:
-    """Predict entity spans for a single ``sentence``.
-
-    This thin wrapper exists for convenience in demos where only one sentence
-    needs to be processed.
-    """
-
-    return predict_spans_batch(
-        [sentence], tokenizer, model, max_new_tokens=max_new_tokens
-    )[0]
 
 
 def predict_spans_batch(

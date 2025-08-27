@@ -12,14 +12,14 @@ Run the script with::
     python forward_llm_mlp_fewnerd.py \
         --input fewnerd_entities.json --output fewnerd_embeddings.pth
 """
-
 from __future__ import annotations
-
+from tqdm.auto import trange  # add this import
+from huggingface_hub import login
 import argparse
 import json
 from dataclasses import dataclass
 from typing import Dict, List
-
+from tqdm import tqdm
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -94,6 +94,13 @@ class MLP(torch.nn.Module):
             return torch.nn.Linear(args.hidden_layer, args.output_layer)
         return torch.nn.Linear(input_layer, args.output_layer)
 
+# ---- hook cache ----
+cache: Dict[str, torch.Tensor] = {}
+
+def hooked_layer_function(_mod, _inp, out):
+    # out: (B, L, hidden_size)
+    cache.clear()
+    cache["output"] = out.detach()
 
 def embed_with_llama(
     sentences: List[Dict],
@@ -101,58 +108,73 @@ def embed_with_llama(
     model,
     mlp: torch.nn.Module,
     device: torch.device,
+    batch_size: int = 8,
 ) -> Dict[str, List[List[float]]]:
-    """Embed entities using block 17 of Llama 3.1."""
+    """Embed entities using Llama 3.1 layer-17 V-projection, batched."""
 
+    model.eval()
     records: Dict[str, List[List[float]]] = {}
-    for sent in sentences:
-        text = sent["sentence"]
+
+    def chunks(lst, n):
+        for i in range(0, len(lst), n):
+            yield lst[i : i + n]
+
+    for start in trange(0, len(sentences), batch_size, desc="Batches"):
+        batch = sentences[start : start + batch_size]
+        texts = [s["sentence"] for s in batch]
+
         enc = tokenizer(
-            text,
+            texts,
             return_tensors="pt",
+            padding=True,
+            truncation=True,
             return_offsets_mapping=True,
             add_special_tokens=True,
         )
+        offsets = enc.pop("offset_mapping")
         enc = {k: v.to(device) for k, v in enc.items()}
+
         with torch.no_grad():
-            outputs = model(
+            cache.clear()
+            _ = model(
                 input_ids=enc["input_ids"],
                 attention_mask=enc["attention_mask"],
+                output_hidden_states=False,
+                use_cache=False,
             )
-        hidden = outputs.hidden_states[17][0]  # block 17 output
-        offsets = enc["offset_mapping"][0].tolist()
 
-        embs: List[List[float]] = []
-        for ent in sent.get("gold", []):
-            start_tok = next(
-                (i for i, (s, e) in enumerate(offsets) if s <= ent["start"] < e),
-                None,
-            )
-            end_tok = next(
-                (i for i, (s, e) in enumerate(offsets) if s < ent["end"] <= e),
-                None,
-            )
-            if start_tok is None or end_tok is None:
-                continue
-            start_vec = hidden[start_tok - 1]
-            end_vec = hidden[end_tok]
-            diff = end_vec - start_vec
-            vec = mlp(diff)
-            embs.append(vec.cpu().tolist())
+        if "output" not in cache:
+            continue
 
-        if embs:
-            records[str(sent["id"])] = embs
+        vproj_batch = cache["output"]
+        for b_idx, sent in enumerate(batch):
+            vproj = vproj_batch[b_idx]
+            offsets_b = offsets[b_idx].tolist()
+
+            embs: List[List[float]] = []
+            for ent in sent.get("predicted", []):
+                end_tok_index   = next((i for i, (s,e) in enumerate(offsets_b) if s <  ent["end"]   <= e), None)
+                if  end_tok_index is None:
+                    continue
+                end_token = vproj[end_tok_index]
+                embs.append(mlp(end_token).detach().cpu().tolist())
+
+            if embs:
+                records[str(sent["id"])] = embs
 
     return records
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description="Embed entities from Llama 3.1 layer-17 v_proj")
     parser.add_argument("--input", default="fewnerd_entities.json", help="Input JSON file")
     parser.add_argument("--output", default="fewnerd_embeddings.pth", help="Output .pth file")
+    parser.add_argument("--batch_size", type=int, default=50, help="Batch size for model forward")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Your MLP and weights (unchanged)
     mlp_args = MLPArgs()
     mlp = MLP(mlp_args).to(device)
     mlp.load_state_dict(torch.load("contrastive_projection_head.pth", map_location=device))
@@ -161,24 +183,43 @@ def main() -> None:
     with open(args.input, "r", encoding="utf8") as f:
         sentences = json.load(f)
 
+    login()  # unchanged
+
     tokenizer = AutoTokenizer.from_pretrained(
         "meta-llama/Meta-Llama-3.1-8B",
         use_fast=True,
     )
+    # Minimal fix: EOS as PAD so batching works
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
+
     model = AutoModelForCausalLM.from_pretrained(
         "meta-llama/Meta-Llama-3.1-8B",
-        output_hidden_states=True,
-        torch_dtype=torch.float32,
+        output_hidden_states=False,   # not needed when using hook
+        torch_dtype=torch.float16,
     ).to(device).eval()
+    # Make model aware of PAD id
+    model.config.pad_token_id = tokenizer.pad_token_id
 
+    # Register hook once on layer-17 v_proj (0-based index)
+    v_proj = model.model.layers[17].self_attn.v_proj
+    handle = v_proj.register_forward_hook(hooked_layer_function)
 
-
-    records = embed_with_llama(sentences, tokenizer, model, mlp, device)
+    try:
+        records = embed_with_llama(
+            sentences=sentences,
+            tokenizer=tokenizer,
+            model=model,
+            mlp=mlp,
+            device=device,
+            batch_size=args.batch_size,
+        )
+    finally:
+        handle.remove()  # always clean up
 
     torch.save(records, args.output)
     print(f"Wrote embeddings for {sum(len(v) for v in records.values())} entities to {args.output}")
 
-
 if __name__ == "__main__":
     main()
-

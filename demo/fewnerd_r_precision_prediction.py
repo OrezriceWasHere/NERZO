@@ -21,110 +21,74 @@ Usage::
 """
 
 from __future__ import annotations
-
 import argparse
 import json
-import math
 from collections import defaultdict
-from typing import Dict, Iterable, List, Sequence, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import numpy as np
 
-try:  # faiss may not be installed
-    import faiss  # type: ignore
-except Exception:  # pragma: no cover
-    faiss = None
-
-try:  # torch may not be installed
-    import torch  # type: ignore
-except Exception:  # pragma: no cover
-    import pickle
-
-    class _TorchStub:
-        @staticmethod
-        def load(path):
-            with open(path, "rb") as f:
-                return pickle.load(f)
-
-    torch = _TorchStub()  # type: ignore
-
-
-def _cosine(u: Sequence[float], v: Sequence[float]) -> float:
-    """Return cosine similarity between two vectors (fallback path)."""
-    dot = sum(a * b for a, b in zip(u, v))
-    nu = math.sqrt(sum(a * a for a in u))
-    nv = math.sqrt(sum(b * b for b in v))
-    return dot / (nu * nv) if nu and nv else 0.0
+import faiss
+import torch
 
 
 def r_precision(embeddings: List[Sequence[float]], labels: List[str]) -> Tuple[Dict[str, float], float]:
-    """Compute R-precision per label and macro average."""
-    label_to_indices: Dict[str, List[int]] = defaultdict(list)
-    for idx, lab in enumerate(labels):
-        label_to_indices[lab].append(idx)
+	"""Compute R-precision per label and macro average."""
+	label_to_indices: Dict[str, List[int]] = defaultdict(list)
+	for idx, lab in enumerate(labels):
+		label_to_indices[lab].append(idx)
 
-    results: Dict[str, float] = {}
+	results: Dict[str, float] = {}
 
-    # Convert embeddings to a normalised matrix for FAISS if available
-    emb_mat = np.asarray(embeddings, dtype="float32")
-    if faiss is not None:
-        faiss.normalize_L2(emb_mat)
-        index = faiss.IndexFlatIP(emb_mat.shape[1])
-        index.add(emb_mat)
+	# Convert embeddings to a normalised matrix for FAISS if available
+	emb_mat = np.asarray(embeddings, dtype="float32")
+	if faiss is not None:
+		faiss.normalize_L2(emb_mat)
+		index = faiss.IndexFlatIP(emb_mat.shape[1])
+		index.add(emb_mat)
 
-    for lab, indices in label_to_indices.items():
-        r = len(indices) - 1
-        if r <= 0:
-            continue  # need at least two samples
-        scores: List[float] = []
-        for i in indices:
-            if faiss is not None:
-                # search returns the query itself as the first hit
-                _, nbrs = index.search(emb_mat[i : i + 1], r + 1)
-                neigh = [j for j in nbrs[0] if j != i][:r]
-                hits = sum(1 for j in neigh if labels[j] == lab)
-            else:  # fallback to Python loop
-                sims = []
-                for j, emb in enumerate(embeddings):
-                    if i == j:
-                        continue
-                    sims.append((_cosine(embeddings[i], emb), labels[j]))
-                sims.sort(reverse=True)
-                top = sims[:r]
-                hits = sum(1 for _, l in top if l == lab)
-            scores.append(hits / r)
-        results[lab] = sum(scores) / len(scores)
+	for lab, indices in label_to_indices.items():
+		r = len(indices) - 1
+		if r <= 0:
+			continue  # need at least two samples
+		scores: List[float] = []
+		for i in indices:
+			# search returns the query itself as the first hit
+			_, nbrs = index.search(emb_mat[i: i + 1], r + 1)
+			neigh = [j for j in nbrs[0] if j != i][:r]
+			hits = sum(1 for j in neigh if labels[j] == lab)
+		results[lab] = sum(scores) / len(scores)
 
-    macro = sum(results.values()) / len(results) if results else 0.0
-    return results, macro
+	macro = sum(results.values()) / len(results) if results else 0.0
+	return results, macro
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--embeddings", default="fewnerd_embeddings.pth", help="Embedding .pth file")
-    parser.add_argument("--entities", default="fewnerd_entities.json", help="Original entity JSON")
-    args = parser.parse_args()
+	parser = argparse.ArgumentParser(description=__doc__)
+	parser.add_argument("--embeddings", default="fewnerd_embeddings.pth", help="Embedding .pth file")
+	parser.add_argument("--entities", default="fewnerd_entities.json", help="Original entity JSON")
+	args = parser.parse_args()
 
-    emb_map = torch.load(args.embeddings)
+	emb_map = torch.load(args.embeddings)
 
-    with open(args.entities, "r", encoding="utf8") as f:
-        sent_records = {rec["id"]: rec for rec in json.load(f)}
+	with open(args.entities, "r", encoding="utf8") as f:
+		sent_records = {rec["id"]: rec for rec in json.load(f)}
 
-    embeddings: List[Sequence[float]] = []
-    labels: List[str] = []
-    for sid, vecs in emb_map.items():
-        gold = sent_records[sid]["gold"]
-        for vec, ent in zip(vecs, gold):
-            embeddings.append(vec)
-            labels.append(ent["label"])
+	embeddings: List[Sequence[float]] = []
+	labels: List[str] = []
+	for sid, vecs in emb_map.items():
+		gold = sent_records[sid]["gold"]
+		for vec, ent in zip(vecs, gold):
+			embeddings.append(vec)
+			labels.append(ent["label"])
 
-    scores, macro = r_precision(embeddings, labels)
+	scores, macro = r_precision(embeddings, labels)
 
-    print("R-precision per fine type:")
-    for lab, sc in sorted(scores.items()):
-        print(f"{lab}: {sc:.4f}")
-    print(f"Average R-precision: {macro:.4f}")
+	print("R-precision per fine type:")
+	for lab, sc in sorted(scores.items()):
+		print(f"{lab}: {sc:.4f}")
+	print(f"Average R-precision: {macro:.4f}")
 
 
 if __name__ == "__main__":
-    main()
+	main()

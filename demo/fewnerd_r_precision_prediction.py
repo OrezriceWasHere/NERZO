@@ -32,63 +32,118 @@ import faiss
 import torch
 
 
-def r_precision(embeddings: List[Sequence[float]], labels: List[str]) -> Tuple[Dict[str, float], float]:
-	"""Compute R-precision per label and macro average."""
-	label_to_indices: Dict[str, List[int]] = defaultdict(list)
-	for idx, lab in enumerate(labels):
-		label_to_indices[lab].append(idx)
+def r_precision(
+    embeddings: Dict[str, List[Sequence[float]]],
+    labels: Dict[str, str],
+) -> Tuple[Dict[str, float], float]:
+    """Compute R-precision per label and macro average.
 
-	results: Dict[str, float] = {}
+    Parameters
+    ----------
+    embeddings:
+        Mapping from ``text_id`` to one or more embedding vectors.  If multiple
+        vectors are provided for a given ``text_id`` they will be treated as
+        alternative representations of the same item.
+    labels:
+        Mapping from ``text_id`` to its fine-grained entity label.
 
-	# Convert embeddings to a normalised matrix for FAISS if available
-	emb_mat = np.asarray(embeddings, dtype="float32")
-	if faiss is not None:
-		faiss.normalize_L2(emb_mat)
-		index = faiss.IndexFlatIP(emb_mat.shape[1])
-		index.add(emb_mat)
+    Returns
+    -------
+    Tuple of ``(per_label_scores, macro_average)``.
+    """
 
-	for lab, indices in label_to_indices.items():
-		r = len(indices) - 1
-		if r <= 0:
-			continue  # need at least two samples
-		scores: List[float] = []
-		for i in indices:
-			# search returns the query itself as the first hit
-			_, nbrs = index.search(emb_mat[i: i + 1], r + 1)
-			neigh = [j for j in nbrs[0] if j != i][:r]
-			hits = sum(1 for j in neigh if labels[j] == lab)
-		results[lab] = sum(scores) / len(scores)
+    # Build a flat matrix of all vectors while remembering which ``text_id``
+    # each row came from.  This allows us to deduplicate results by ``text_id``
+    # during the similarity search.
+    all_vecs: List[np.ndarray] = []
+    index_to_tid: List[str] = []
+    for tid, vecs in embeddings.items():
+        for vec in vecs:
+            all_vecs.append(np.asarray(vec, dtype="float32"))
+            index_to_tid.append(tid)
 
-	macro = sum(results.values()) / len(results) if results else 0.0
-	return results, macro
+    if not all_vecs:
+        return {}, 0.0
+
+    emb_mat = np.stack(all_vecs)
+    faiss.normalize_L2(emb_mat)
+    index = faiss.IndexFlatIP(emb_mat.shape[1])
+    index.add(emb_mat)
+
+    # Group text IDs by label so we can compute an R-precision score for each
+    # fine type separately.
+    label_to_ids: Dict[str, List[str]] = defaultdict(list)
+    for tid, lab in labels.items():
+        label_to_ids[lab].append(tid)
+
+    results: Dict[str, float] = {}
+
+    for lab, tids in label_to_ids.items():
+        r = len(tids) - 1
+        if r <= 0:
+            continue  # need at least two samples
+
+        scores: List[float] = []
+        for query_tid in tids:
+            query_vecs = np.asarray(embeddings[query_tid], dtype="float32")
+            faiss.normalize_L2(query_vecs)
+            max_k = min(4 * len(index_to_tid), index.ntotal)
+            D, I = index.search(query_vecs, max_k)
+
+            # Collect the best similarity score for each retrieved ``text_id``
+            # across all query vectors and discard the query item itself.
+            candidate_scores: Dict[str, float] = {}
+            for d_row, i_row in zip(D, I):
+                for dist, idx in zip(d_row, i_row):
+                    tid = index_to_tid[idx]
+                    if tid == query_tid:
+                        continue
+                    if tid not in candidate_scores or dist > candidate_scores[tid]:
+                        candidate_scores[tid] = dist
+
+            ranking = [
+                tid for tid, _ in sorted(candidate_scores.items(), key=lambda x: x[1], reverse=True)
+            ]
+            top_r = ranking[:r]
+            hits = sum(1 for tid in top_r if labels[tid] == lab)
+            scores.append(hits / r)
+
+        results[lab] = sum(scores) / len(scores)
+
+    macro = sum(results.values()) / len(results) if results else 0.0
+    return results, macro
 
 
 def main() -> None:
-	parser = argparse.ArgumentParser(description=__doc__)
-	parser.add_argument("--embeddings", default="fewnerd_embeddings.pth", help="Embedding .pth file")
-	parser.add_argument("--entities", default="fewnerd_entities.json", help="Original entity JSON")
-	args = parser.parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--embeddings", default="fewnerd_embeddings.pth", help="Embedding .pth file")
+    parser.add_argument("--entities", default="fewnerd_entities.json", help="Original entity JSON")
+    args = parser.parse_args()
 
-	emb_map = torch.load(args.embeddings)
+    emb_map = torch.load(args.embeddings)
 
-	with open(args.entities, "r", encoding="utf8") as f:
-		sent_records = {rec["id"]: rec for rec in json.load(f)}
+    with open(args.entities, "r", encoding="utf8") as f:
+        sent_records = {rec["id"]: rec for rec in json.load(f)}
 
-	embeddings: List[Sequence[float]] = []
-	labels: List[str] = []
-	for sid, vecs in emb_map.items():
-		gold = sent_records[sid]["gold"]
-		for vec, ent in zip(vecs, gold):
-			embeddings.append(vec)
-			labels.append(ent["label"])
+    # Build a mapping from a unique ``text_id`` to its embeddings and label.  A
+    # single sentence may contain multiple entities; we therefore combine the
+    # sentence identifier with the entity index to create a unique key.
+    embeddings: Dict[str, List[Sequence[float]]] = {}
+    labels: Dict[str, str] = {}
+    for sid, vecs in emb_map.items():
+        gold = sent_records[sid]["gold"]
+        for idx, (vec, ent) in enumerate(zip(vecs, gold)):
+            tid = f"{sid}-{idx}"
+            embeddings[tid] = embeddings.get(tid, []) + [vec]
+            labels[tid] = ent["label"]
 
-	scores, macro = r_precision(embeddings, labels)
+    scores, macro = r_precision(embeddings, labels)
 
-	print("R-precision per fine type:")
-	for lab, sc in sorted(scores.items()):
-		print(f"{lab}: {sc:.4f}")
-	print(f"Average R-precision: {macro:.4f}")
+    print("R-precision per fine type:")
+    for lab, sc in sorted(scores.items()):
+        print(f"{lab}: {sc:.4f}")
+    print(f"Average R-precision: {macro:.4f}")
 
 
 if __name__ == "__main__":
-	main()
+    main()

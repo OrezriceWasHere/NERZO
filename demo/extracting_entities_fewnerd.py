@@ -115,7 +115,7 @@ def main() -> None:
 	    "test": "hf://datasets/DFKI-SLT/few-nerd@refs/convert/parquet/supervised/test/*.parquet",
     }
     dataset = load_dataset("parquet", data_files=data_files)
-    label_names = dataset["train"].features["ner_tags"].feature.names
+    label_names = dataset["train"].features["fine_ner_tags"].feature.names
 
     tokenizer, model = load_cascadener()
 
@@ -129,7 +129,7 @@ def main() -> None:
     for batch_start_index in tqdm(batches):
         batch = all_examples[batch_start_index:batch_start_index + args.batch_size]
         texts = [" ".join(ex["tokens"]) for ex in batch]
-        tags_batch = [[label_names[t] for t in ex["ner_tags"]] for ex in batch]
+        tags_batch = [[label_names[t] for t in ex["fine_ner_tags"]] for ex in batch]
         gold_batch = [
             tags_to_spans(ex["tokens"], tags)
             for ex, tags in zip(batch, tags_batch)

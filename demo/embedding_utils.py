@@ -116,9 +116,9 @@ def load_llm_and_mlp(device: torch.device):
 
     # Register hook on layer-17 v_proj
     v_proj = model.model.layers[17].self_attn.v_proj
-    handle = v_proj.register_forward_hook(hooked_layer_function)
+    v_proj.register_forward_hook(hooked_layer_function)
 
-    return tokenizer, model, mlp, handle
+    return tokenizer, model, mlp
 
 
 def embed_text_mapping(
@@ -171,9 +171,6 @@ def embed_texts(texts: Dict[str, str], batch_size: int = 8) -> Dict[str, torch.T
     """Embed a mapping of identifier -> text using Llama 3.1 and the MLP head."""
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer, model, mlp, handle = load_llm_and_mlp(device)
-    try:
-        return embed_text_mapping(texts, tokenizer, model, mlp, device, batch_size=batch_size)
-    finally:
-        handle.remove()
+    tokenizer, model, mlp = load_llm_and_mlp(device)
+    return embed_text_mapping(texts, tokenizer, model, mlp, device, batch_size=batch_size)
 

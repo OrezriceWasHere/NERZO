@@ -21,94 +21,93 @@ import torch
 
 from embedding_utils import load_llm_and_mlp, cache
 
+
 def embed_with_llama(
-    sentences: List[Dict],
-    tokenizer,
-    model,
-    mlp: torch.nn.Module,
-    device: torch.device,
-    batch_size: int = 8,
+		sentences: List[Dict],
+		tokenizer,
+		model,
+		mlp: torch.nn.Module,
+		device: torch.device,
+		batch_size: int = 8,
 ) -> Dict[str, List[List[float]]]:
-    """Embed entities using Llama 3.1 layer-17 V-projection, batched."""
+	"""Embed entities using Llama 3.1 layer-17 V-projection, batched."""
 
-    model.eval()
-    records: Dict[str, List[List[float]]] = {}
+	model.eval()
+	records: Dict[str, List[List[float]]] = {}
 
-    for start in trange(0, len(sentences), batch_size, desc="Batches"):
-        batch = sentences[start : start + batch_size]
-        texts = [s["sentence"] for s in batch]
+	for start in trange(0, len(sentences), batch_size, desc="Batches"):
+		batch = sentences[start: start + batch_size]
+		texts = [s["sentence"] for s in batch]
 
-        enc = tokenizer(
-            texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            return_offsets_mapping=True,
-            add_special_tokens=True,
-        )
-        offsets = enc.pop("offset_mapping")
-        enc = {k: v.to(device) for k, v in enc.items()}
+		tokens = tokenizer(
+			texts,
+			return_tensors="pt",
+			padding=True,
+			truncation=True,
+			return_offsets_mapping=True,
+			add_special_tokens=True,
+		)
+		offsets = tokens.pop("offset_mapping")
+		tokens = {k: v.to(device) for k, v in tokens.items()}
 
-        with torch.no_grad():
-            cache.clear()
-            _ = model(
-                input_ids=enc["input_ids"],
-                attention_mask=enc["attention_mask"],
-                output_hidden_states=False,
-                use_cache=False,
-            )
+		with torch.no_grad():
+			cache.clear()
+			_ = model(
+				input_ids=tokens["input_ids"],
+				attention_mask=tokens["attention_mask"],
+				output_hidden_states=False,
+				use_cache=False,
+			)
 
-        if "output" not in cache:
-            continue
+		if "output" not in cache:
+			continue
 
-        vproj_batch = cache["output"]
-        for b_idx, sent in enumerate(batch):
-            vproj = vproj_batch[b_idx]
-            offsets_b = offsets[b_idx].tolist()
+		vproj_batch = cache["output"]
+		for b_idx, sent in enumerate(batch):
+			vproj = vproj_batch[b_idx]
+			offsets_b = offsets[b_idx].tolist()
 
-            embs: List[List[float]] = []
-            for ent in sent.get("predicted", []):
-                end_tok_index   = next((i for i, (s,e) in enumerate(offsets_b) if s <  ent["end"]   <= e), None)
-                if  end_tok_index is None:
-                    continue
-                end_token = vproj[end_tok_index]
-                embs.append(mlp(end_token).detach().cpu().tolist())
+			embs: List[List[float]] = []
+			for ent in sent.get("predicted", []):
+				end_tok_index = next((i for i, (s, e) in enumerate(offsets_b) if s < ent["end"] <= e), None)
+				if end_tok_index is None:
+					continue
+				end_token = vproj[end_tok_index]
+				embs.append(mlp(end_token).detach().cpu().tolist())
 
-            if embs:
-                records[str(sent["id"])] = embs
+			if embs:
+				records[str(sent["id"])] = embs
 
-    return records
+	return records
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Embed entities from Llama 3.1 layer-17 v_proj")
-    parser.add_argument("--input", default="fewnerd_entities.json", help="Input JSON file")
-    parser.add_argument("--output", default="fewnerd_embeddings.pth", help="Output .pth file")
-    parser.add_argument("--batch_size", type=int, default=50, help="Batch size for model forward")
-    args = parser.parse_args()
+	parser = argparse.ArgumentParser(description="Embed entities from Llama 3.1 layer-17 v_proj")
+	parser.add_argument("--input", default="fewnerd_entities.json", help="Input JSON file")
+	parser.add_argument("--output", default="fewnerd_embeddings.pth", help="Output .pth file")
+	parser.add_argument("--batch_size", type=int, default=50, help="Batch size for model forward")
+	args = parser.parse_args()
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer, model, mlp, handle = load_llm_and_mlp(device)
+	device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+	tokenizer, model, mlp = load_llm_and_mlp(device)
 
-    with open(args.input, "r", encoding="utf8") as f:
-        sentences = json.load(f)
+	with open(args.input, "r", encoding="utf8") as f:
+		sentences = json.load(f)
 
-    try:
-        records = embed_with_llama(
-            sentences=sentences,
-            tokenizer=tokenizer,
-            model=model,
-            mlp=mlp,
-            device=device,
-            batch_size=args.batch_size,
-        )
-    finally:
-        handle.remove()  # always clean up
+	records = embed_with_llama(
+		sentences=sentences,
+		tokenizer=tokenizer,
+		model=model,
+		mlp=mlp,
+		device=device,
+		batch_size=args.batch_size,
+	)
 
-    torch.save(records, args.output)
-    print(
-        f"Wrote embeddings for {sum(len(v) for v in records.values())} entities to {args.output}"
-    )
+	torch.save(records, args.output)
+	print(
+		f"Wrote embeddings for {sum(len(v) for v in records.values())} entities to {args.output}"
+	)
+
 
 if __name__ == "__main__":
-    main()
+	main()

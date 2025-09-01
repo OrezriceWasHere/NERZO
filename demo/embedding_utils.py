@@ -6,6 +6,7 @@ from typing import Dict
 
 import torch
 from huggingface_hub import login
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
@@ -41,13 +42,13 @@ class MLP(torch.nn.Module):
 
     def __init__(self, args: MLPArgs):
         super().__init__()
-        gate = Gate(args.input_layer) if args.enable_gate else torch.nn.Identity()
+        # gate = Gate(args.input_layer) if args.enable_gate else torch.nn.Identity()
         activation = self._build_activation(args.activation)
         noise = self._build_noise(args)
         middle = self._build_middle_layer(args.input_layer, args)
         output = self._build_output_layer(args.input_layer, args)
 
-        self.net = torch.nn.Sequential(gate, middle, activation, noise, output)
+        self.net = torch.nn.Sequential(middle, activation, noise, output)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:  # pragma: no cover - thin wrapper
         return self.net(x)
@@ -94,6 +95,7 @@ def load_llm_and_mlp(device: torch.device):
     mlp_args = MLPArgs()
     mlp = MLP(mlp_args).to(device)
     mlp.load_state_dict(torch.load("contrastive_projection_head.pth", map_location=device))
+    mlp = mlp.half()
     mlp.eval()
 
     # Login for HF gated models
@@ -121,56 +123,137 @@ def load_llm_and_mlp(device: torch.device):
     return tokenizer, model, mlp
 
 
-def embed_text_mapping(
-    texts: Dict[str, str],
+def embed_texts(texts: Dict[str, str], batch_size: int = 8) -> Dict[str, torch.Tensor]:
+    """Embed id->text by treating each full text as a single span and using the end token.
+
+    This is implemented via embed_entities_dataset to keep a single forward path.
+    """
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer, model, mlp = load_llm_and_mlp(device)
+
+    # Wrap as FewNERD-style records with one span covering the whole text
+    sentences = [
+        {"id": k, "sentence": v, "predicted": [{"start": 0, "end": len(v)}]}
+        for k, v in texts.items()
+    ]
+
+    records = embed_entities_dataset(
+        sentences=sentences,
+        tokenizer=tokenizer,
+        model=model,
+        mlp=mlp,
+        device=device,
+        batch_size=batch_size,
+    )
+
+    # Convert list-of-one to single tensor for backward compatibility
+    out: Dict[str, torch.Tensor] = {}
+    for k, v in records.items():
+        if not v:
+            continue
+        out[k] = torch.tensor(v[0])
+    return out
+
+def embed_entities_batch(
+    batch,
+    tokenizer,
+    model,
+    mlp: torch.nn.Module,
+    device: torch.device,
+):
+    """Embed entities for a batch of sentence records.
+
+    Each record is expected to be a dict with at least:
+      - id: unique identifier
+      - sentence: raw text
+      - predicted: list of spans, each having keys "start" and "end" (char indices)
+
+    The representation is taken from the Llama 3.1 layer-17 v_proj at the token
+    whose character span contains the entity's end offset, then projected by the MLP.
+
+    Returns a mapping: id -> list of embedding vectors (as Python lists of floats).
+    """
+
+    model.eval()
+
+    texts = [s["sentence"] for s in batch]
+    tokens = tokenizer(
+        texts,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        return_offsets_mapping=True,
+        add_special_tokens=True,
+    )
+    offsets = tokens.pop("offset_mapping")
+    tokens = {k: v.to(device) for k, v in tokens.items()}
+
+    with torch.no_grad():
+        cache.clear()
+        _ = model(
+            input_ids=tokens["input_ids"],
+            attention_mask=tokens["attention_mask"],
+            output_hidden_states=False,
+            use_cache=False,
+        )
+
+    result = {}
+    if "output" not in cache:
+        return result
+
+    vproj_batch = cache["output"]  # (B, L, H)
+
+    def _token_indices_from_offsets(offsets_list, start_idx: int, end_idx: int):
+        first_token_idx, last_token_idx = None, None
+        for i, (token_start, token_end) in enumerate(offsets_list):
+            if token_start <= start_idx < token_end and first_token_idx is None:
+                first_token_idx = i
+            if token_start < end_idx <= token_end:
+                last_token_idx = i
+                break
+        if first_token_idx is None or last_token_idx is None:
+            raise ValueError(
+                f"Could not map text span ({start_idx}, {end_idx}) to token indices"
+            )
+        return first_token_idx, last_token_idx
+
+    for b_idx, sent in enumerate(batch):
+        vproj = vproj_batch[b_idx]
+        offsets_b = offsets[b_idx].tolist()
+
+        embs = []
+        for ent in sent.get("predicted", []):
+            if ent.get("end") == ent.get("start"):
+                continue
+            try:
+                _, last_tok_index = _token_indices_from_offsets(offsets_b, ent["start"], ent["end"])
+            except Exception:
+                continue
+            # Use the end token representation only (choose_llm_representation = 'end')
+            end_token = vproj[last_tok_index]
+            embs.append(mlp(end_token).detach().cpu().tolist())
+
+        if embs:
+            result[str(sent["id"])] = embs
+
+    return result
+
+
+def embed_entities_dataset(
+    sentences,
     tokenizer,
     model,
     mlp: torch.nn.Module,
     device: torch.device,
     batch_size: int = 8,
-) -> Dict[str, torch.Tensor]:
-    """Embed a mapping of id->text using the last token's representation."""
+):
+    """Embed entities for a full dataset by batching and calling embed_entities_batch."""
 
-    model.eval()
-    keys = list(texts.keys())
-    values = [texts[k] for k in keys]
-    embeddings: Dict[str, torch.Tensor] = {}
-
-    for start in range(0, len(values), batch_size):
-        batch_texts = values[start : start + batch_size]
-        enc = tokenizer(
-            batch_texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            add_special_tokens=True,
-        )
-        enc = {k: v.to(device) for k, v in enc.items()}
-
-        with torch.no_grad():
-            cache.clear()
-            _ = model(
-                input_ids=enc["input_ids"],
-                attention_mask=enc["attention_mask"],
-                output_hidden_states=False,
-                use_cache=False,
-            )
-
-        if "output" not in cache:
-            continue
-
-        vproj_batch = cache["output"]
-        for b_idx, key in enumerate(keys[start : start + batch_size]):
-            token_vec = vproj_batch[b_idx, -1]
-            embeddings[key] = mlp(token_vec).detach().cpu()
-
-    return embeddings
-
-
-def embed_texts(texts: Dict[str, str], batch_size: int = 8) -> Dict[str, torch.Tensor]:
-    """Embed a mapping of identifier -> text using Llama 3.1 and the MLP head."""
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    tokenizer, model, mlp = load_llm_and_mlp(device)
-    return embed_text_mapping(texts, tokenizer, model, mlp, device, batch_size=batch_size)
-
+    all_results: Dict[str, list] = {}
+    for start in tqdm(range(0, len(sentences), batch_size)):
+        batch = sentences[start : start + batch_size]
+        batch_result = embed_entities_batch(batch, tokenizer, model, mlp, device)
+        for k, v in batch_result.items():
+            all_results.setdefault(k, []).extend(v)
+    return all_results

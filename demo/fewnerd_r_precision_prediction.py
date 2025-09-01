@@ -30,6 +30,7 @@ average.
 from __future__ import annotations
 
 import argparse
+import os
 import json
 from typing import Dict, Iterable, List, Sequence, Set, Tuple
 
@@ -38,7 +39,7 @@ import torch
 
 import faiss
 
-from embedding_utils import embed_texts
+from embedding_utils import load_llm_and_mlp, embed_entities_dataset
 from tqdm.auto import tqdm as _tqdm
 
 
@@ -145,23 +146,36 @@ def compute_r_precision(
     base_mat, id_map = _flatten_embeddings(embeddings_by_tid)
     base_mat = _l2_normalize(base_mat)
 
-    # Build index (FAISS or fallback matrix)
     dim = base_mat.shape[1]
     index = faiss.IndexFlatIP(dim)
     index.add(base_mat)
 
-    # Embed fine type texts
+    # Embed fine type texts using the same path as dataset embeddings
     print("embedding fine types")
-    type_embs_torch = embed_texts(fine_type_texts)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    tokenizer, model, mlp = load_llm_and_mlp(device)
+
+    sentences = [
+        {"id": k, "sentence": v, "predicted": [{"start": 0, "end": len(v)}]}
+        for k, v in fine_type_texts.items()
+    ]
+    records = embed_entities_dataset(
+        sentences=sentences,
+        tokenizer=tokenizer,
+        model=model,
+        mlp=mlp,
+        device=device,
+        batch_size=32,
+    )
     # Convert to normalized numpy in fixed order
     fine_types = list(fine_type_texts.keys())
-    query_mat = np.stack([_to_float32(type_embs_torch[ft].numpy()) for ft in fine_types], axis=0)
+    query_mat = np.stack([_to_float32(records[ft][0]) for ft in fine_types], axis=0)
     query_mat = _l2_normalize(query_mat)
 
     # Perform a single batched search with conservative top-k (max 4*k)
     k_per_type = [max(1, len(fine_type_to_ids.get(ft, set()))) for ft in fine_types]
     max_k = max(k_per_type) if k_per_type else 1
-    D, I = _search_index(index, query_mat, 4* max_k)
+    D, I = index.search(query_mat, 4*max_k)
 
     # Compute per-type R-precision with de-dup by text_id
     r_precisions: Dict[str, float] = {}
@@ -191,7 +205,7 @@ def compute_r_precision(
     return r_precisions
 
 
-def _load_fine_types(path: str | None, entities: List[dict]) -> Dict[str, str]:
+def _load_fine_types(path: str | None, entities: List[dict], name_map_path: str | None = None) -> Dict[str, str]:
     """Load list of fine types and return mapping type->text to embed.
 
     If ``path`` is provided, it should contain a JSON array of string labels
@@ -214,25 +228,48 @@ def _load_fine_types(path: str | None, entities: List[dict]) -> Dict[str, str]:
                     s.add(lab)
         fine_types = sorted(s)
 
-    # Map each fine type to a human-readable query text. Here we just use the label itself.
-    return {ft: ft for ft in fine_types}
+    # Map each fine type to a human-readable query text using the mapping JSON.
+    mapping_path = name_map_path
+    if not mapping_path:
+        here = os.path.dirname(__file__)
+        mapping_path = os.path.join(here, "entities_to_names.json")
+    try:
+        with open(mapping_path, "r", encoding="utf8") as f:
+            name_map: Dict[str, str] = json.load(f)
+    except FileNotFoundError:
+        # Fallback: use the label as-is if mapping is unavailable
+        name_map = {}
+
+    return {ft: name_map.get(ft.split("-")[-1], ft) for ft in fine_types}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="R-Precision for FewNERD fine types (FAISS retrieval)")
     parser.add_argument("--entities", default="fewnerd_entities.json", help="Path to FewNERD sentence JSON")
     parser.add_argument("--embeddings", default="fewnerd_embeddings.pth", help="Path to entity embeddings .pth")
+    parser.add_argument("--type-name-map", dest="type_name_map", default=None,
+                        help="Path to JSON mapping fine_type -> readable name (defaults to demo/entities_to_names.json)")
     args = parser.parse_args()
 
     # Load inputs
     with open(args.entities, "r", encoding="utf8") as f:
         entities = json.load(f)
 
+    # Filter out sentences with fewer than 5 words
+    def _word_count_ok(text: str, min_words: int = 5) -> bool:
+        return len(str(text).split()) >= min_words
+
+    entities = [rec for rec in entities if _word_count_ok(rec.get("sentence", ""))]
+
     embeds = torch.load(args.embeddings)
     if not isinstance(embeds, dict):
         raise ValueError("Embeddings file must be a dict[text_id] -> List[vector]")
 
-    fine_type_texts = _load_fine_types(path=None, entities=entities)
+    # Keep only embeddings for sentences that passed the word-count filter
+    allowed_ids = {str(rec["id"]) for rec in entities}
+    embeds = {tid: vecs for tid, vecs in embeds.items() if str(tid) in allowed_ids}
+
+    fine_type_texts = _load_fine_types(path=None, entities=entities, name_map_path=args.type_name_map)
     fine_type_set = set(fine_type_texts.keys())
     fine_type_to_ids = _build_fine_type_to_ids(entities, allowed_fine_types=fine_type_set)
 
@@ -252,9 +289,13 @@ def main() -> None:
     for ft, size, r in _tqdm(rows, desc="Printing rows", dynamic_ncols=True, leave=False):
         print(f"{ft:40.40s}  {size:6d}  {r:11.4f}")
 
-    # Macro average over all non-empty fine types
-    non_empty = [r for ft, size, r in rows if size > 0]
-    macro = float(np.mean(non_empty)) if non_empty else 0.0
+    # Macro average over all non-empty fine types, excluding readable name 'Other' (case-insensitive)
+    def _is_other(ft: str) -> bool:
+        name = str(fine_type_texts.get(ft, ""))
+        return name.strip().lower() == "other"
+
+    filtered = [r for ft, size, r in rows if size > 0 and not _is_other(ft)]
+    macro = float(np.mean(filtered)) if filtered else 0.0
     print("\nMacro R-precision (non-empty types): {:.4f}".format(macro))
 
 

@@ -1,6 +1,5 @@
 """Utility functions for embedding text with the LLM+MLP stack."""
 from __future__ import annotations
-from typing import Dict
 import torch
 from huggingface_hub import login
 from tqdm import tqdm

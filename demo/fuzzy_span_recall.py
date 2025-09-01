@@ -1,17 +1,14 @@
 """Fuzzy span recall calculation for entity extraction.
 
-This module reproduces the fuzzy matching logic from
-``evaluate_with_extraction/evaluation/span_extraction_eval (1).py`` but
-exposes a small helper that counts how many gold entities are matched by
-predicted spans.  It is used by ``extracting_entities_fewnerd.py`` to
-report span‑level recall.
+Fuzzy Recall is used to evaluate the entities detection phase.
 """
 
 from __future__ import annotations
 
 import re
-import unicodedata
 from typing import Sequence, Tuple
+import unicodedata
+ 
 
 STOP_DETS = {"the", "a", "an"}
 

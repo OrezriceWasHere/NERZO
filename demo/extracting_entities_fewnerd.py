@@ -25,7 +25,8 @@ from __future__ import annotations
 import argparse
 import json
 import uuid
-from typing import List, Sequence, Tuple
+from typing import Sequence, List, Tuple
+
 from tqdm import tqdm
 from datasets import load_dataset
 
@@ -158,4 +159,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

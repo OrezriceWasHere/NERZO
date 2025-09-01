@@ -15,7 +15,6 @@ Run the script with::
 from __future__ import annotations
 import argparse
 import json
-from typing import Dict, List
 import torch
 
 from embedding_utils import load_llm_and_mlp, embed_entities_dataset

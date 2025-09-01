@@ -32,7 +32,7 @@ from __future__ import annotations
 import argparse
 import os
 import json
-from typing import Dict, Iterable, List, Sequence, Set, Tuple
+from typing import Iterable, Set, Dict, Sequence, List, Tuple
 
 import numpy as np
 import torch
@@ -112,19 +112,6 @@ def _flatten_embeddings(embeds: Dict[str, Sequence[Sequence[float]]]) -> Tuple[n
 
     mat = np.stack(rows, axis=0)
     return mat, id_map
-
-
-def _search_index(
-    index,
-    queries: np.ndarray,
-    topk: int,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Search helper that supports FAISS
-
-    queries are assumed L2-normalized, and index contains normalized vectors.
-    """
-    D, I = index.search(queries, topk)
-    return D, I
 
 
 

@@ -13,7 +13,7 @@ file without relying on any project-internal modules.
 from __future__ import annotations
 
 import re
-from typing import List, Tuple, Dict
+from typing import List, Dict, Tuple
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch

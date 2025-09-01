@@ -1,10 +1,9 @@
-"""Extract entities from the full FewNERD dataset and evaluate fuzzy span recall.
+"""Extract entities from the full FewNERD dataset and evaluate recall.
 
-This script downloads the complete FewNERD dataset, predicts entity spans for
+This script downloads the complete FewNERD dataset, locates entity spans for
 each sentence with the ``CascadeNER/models_for_CascadeNER`` language model and
 stores the results in a JSON file.  The helper functions that interface with
-this model live in ``cascade_llm_entity_extractor.py`` so that the extraction
-logic is isolated from the dataset handling shown here.
+this model live in ``cascade_llm_entity_extractor.py``.
 
 The output JSON is a list of records with the following structure::
 
@@ -21,17 +20,9 @@ The output JSON is a list of records with the following structure::
         ]
     }
 
-Run the script with::
-
-    python extracting_entities_fewnerd.py --output fewnerd_entities.json
-
-Use ``--limit`` to process only the first ``N`` sentences for quicker demos.
 """
-
 from __future__ import annotations
-
 import argparse
-import itertools
 import json
 import uuid
 from typing import List, Sequence, Tuple
